@@ -1,13 +1,17 @@
 module github.com/goccy/go-zetasqlite
 
-go 1.19
+go 1.25.4
 
 require (
-	github.com/goccy/go-zetasql v0.5.5
+	github.com/glassmonkey/zetasql-wasm v0.0.0-00010101000000-000000000000
 	github.com/mattn/go-sqlite3 v1.14.16
 )
 
-require github.com/google/go-cmp v0.5.9
+replace github.com/glassmonkey/zetasql-wasm => /Users/glassmonkey/src/github.com/glassmonkey/zetasql-wasm
+
+replace github.com/glassmonkey/zetasql-wasm/wasm => /Users/glassmonkey/src/github.com/glassmonkey/zetasql-wasm/wasm
+
+require github.com/google/go-cmp v0.7.0
 
 require github.com/goccy/go-json v0.10.0
 
@@ -35,6 +39,7 @@ require (
 	github.com/apache/arrow/go/v11 v11.0.0 // indirect
 	github.com/apache/thrift v0.16.0 // indirect
 	github.com/dlclark/regexp2 v1.7.0 // indirect
+	github.com/glassmonkey/zetasql-wasm/wasm v0.0.0 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
@@ -49,6 +54,7 @@ require (
 	github.com/minio/c2goasm v0.0.0-20190812172519-36a3d3bbc4f3 // indirect
 	github.com/pierrec/lz4/v4 v4.1.15 // indirect
 	github.com/pkg/errors v0.8.0 // indirect
+	github.com/tetratelabs/wazero v1.8.2 // indirect
 	github.com/zeebo/xxh3 v1.0.2 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	golang.org/x/mod v0.8.0 // indirect
@@ -61,5 +67,5 @@ require (
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20230330154414-c0448cd141ea // indirect
 	google.golang.org/grpc v1.54.0 // indirect
-	google.golang.org/protobuf v1.30.0 // indirect
+	google.golang.org/protobuf v1.36.11 // indirect
 )
