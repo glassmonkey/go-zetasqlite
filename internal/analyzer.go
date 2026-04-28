@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/goccy/go-zetasql"
-	parsed_ast "github.com/goccy/go-zetasql/ast"
-	ast "github.com/goccy/go-zetasql/resolved_ast"
-	"github.com/goccy/go-zetasql/types"
+	"github.com/glassmonkey/zetasql-wasm"
+	parsed_ast "github.com/glassmonkey/zetasql-wasm/ast"
+	ast "github.com/glassmonkey/zetasql-wasm/resolved_ast"
+	"github.com/glassmonkey/zetasql-wasm/types"
 )
 
 type Analyzer struct {
@@ -78,22 +78,22 @@ func newAnalyzerOptions() (*zetasql.AnalyzerOptions, error) {
 		zetasql.FeatureCreateTableAsSelectColumnList,
 	})
 	langOpt.SetSupportedStatementKinds([]ast.Kind{
-		ast.BeginStmt,
-		ast.CommitStmt,
-		ast.MergeStmt,
-		ast.QueryStmt,
-		ast.InsertStmt,
-		ast.UpdateStmt,
-		ast.DeleteStmt,
-		ast.DropStmt,
-		ast.TruncateStmt,
-		ast.CreateTableStmt,
-		ast.CreateTableAsSelectStmt,
-		ast.CreateProcedureStmt,
-		ast.CreateFunctionStmt,
-		ast.CreateTableFunctionStmt,
-		ast.CreateViewStmt,
-		ast.DropFunctionStmt,
+		ast.BeginStmtNode,
+		ast.CommitStmtNode,
+		ast.MergeStmtNode,
+		ast.QueryStmtNode,
+		ast.InsertStmtNode,
+		ast.UpdateStmtNode,
+		ast.DeleteStmtNode,
+		ast.DropStmtNode,
+		ast.TruncateStmtNode,
+		ast.CreateTableStmtNode,
+		ast.CreateTableAsSelectStmtNode,
+		ast.CreateProcedureStmtNode,
+		ast.CreateFunctionStmtNode,
+		ast.CreateTableFunctionStmtNode,
+		ast.CreateViewStmtNode,
+		ast.DropFunctionStmtNode,
 	})
 	// Enable QUALIFY without WHERE
 	// https://github.com/google/zetasql/issues/124
@@ -263,33 +263,33 @@ func (a *Analyzer) analyzeTemplatedFunctionWithRuntimeArgument(ctx context.Conte
 
 func (a *Analyzer) newStmtAction(ctx context.Context, query string, args []driver.NamedValue, node ast.StatementNode) (StmtAction, error) {
 	switch node.Kind() {
-	case ast.CreateTableStmt:
+	case ast.CreateTableStmtNode:
 		return a.newCreateTableStmtAction(ctx, query, args, node.(*ast.CreateTableStmtNode))
-	case ast.CreateTableAsSelectStmt:
+	case ast.CreateTableAsSelectStmtNode:
 		ctx = withUseColumnID(ctx)
 		return a.newCreateTableAsSelectStmtAction(ctx, query, args, node.(*ast.CreateTableAsSelectStmtNode))
-	case ast.CreateFunctionStmt:
+	case ast.CreateFunctionStmtNode:
 		return a.newCreateFunctionStmtAction(ctx, query, args, node.(*ast.CreateFunctionStmtNode))
-	case ast.CreateViewStmt:
+	case ast.CreateViewStmtNode:
 		ctx = withUseColumnID(ctx)
 		return a.newCreateViewStmtAction(ctx, query, args, node.(*ast.CreateViewStmtNode))
-	case ast.DropStmt:
+	case ast.DropStmtNode:
 		return a.newDropStmtAction(ctx, query, args, node.(*ast.DropStmtNode))
-	case ast.DropFunctionStmt:
+	case ast.DropFunctionStmtNode:
 		return a.newDropFunctionStmtAction(ctx, query, args, node.(*ast.DropFunctionStmtNode))
-	case ast.InsertStmt, ast.UpdateStmt, ast.DeleteStmt:
+	case ast.InsertStmtNode, ast.UpdateStmtNode, ast.DeleteStmtNode:
 		return a.newDMLStmtAction(ctx, query, args, node)
-	case ast.TruncateStmt:
+	case ast.TruncateStmtNode:
 		return a.newTruncateStmtAction(ctx, query, args, node.(*ast.TruncateStmtNode))
-	case ast.MergeStmt:
+	case ast.MergeStmtNode:
 		ctx = withUseColumnID(ctx)
 		return a.newMergeStmtAction(ctx, query, args, node.(*ast.MergeStmtNode))
-	case ast.QueryStmt:
+	case ast.QueryStmtNode:
 		ctx = withUseColumnID(ctx)
 		return a.newQueryStmtAction(ctx, query, args, node.(*ast.QueryStmtNode))
-	case ast.BeginStmt:
+	case ast.BeginStmtNode:
 		return a.newBeginStmtAction(ctx, query, args, node)
-	case ast.CommitStmt:
+	case ast.CommitStmtNode:
 		return a.newCommitStmtAction(ctx, query, args, node)
 	}
 	return nil, fmt.Errorf("unsupported stmt %s", node.DebugString())

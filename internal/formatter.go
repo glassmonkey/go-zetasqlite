@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"github.com/goccy/go-json"
-	parsed_ast "github.com/goccy/go-zetasql/ast"
-	ast "github.com/goccy/go-zetasql/resolved_ast"
-	"github.com/goccy/go-zetasql/types"
+	parsed_ast "github.com/glassmonkey/zetasql-wasm/ast"
+	ast "github.com/glassmonkey/zetasql-wasm/resolved_ast"
+	"github.com/glassmonkey/zetasql-wasm/types"
 )
 
 type Formatter interface {

@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/goccy/go-json"
-	ast "github.com/goccy/go-zetasql/resolved_ast"
-	"github.com/goccy/go-zetasql/types"
+	ast "github.com/glassmonkey/zetasql-wasm/resolved_ast"
+	"github.com/glassmonkey/zetasql-wasm/types"
 )
 
 func EncodeNamedValues(v []driver.NamedValue, params []*ast.ParameterNode) ([]sql.NamedArg, error) {
@@ -145,39 +145,39 @@ func ValueFromZetaSQLValue(v types.Value) (Value, error) {
 		return nil, nil
 	}
 	switch v.Type().Kind() {
-	case types.INT32, types.INT64, types.UINT32, types.UINT64:
+	case types.Int32, types.Int64, types.Uint32, types.Uint64:
 		return intValueFromLiteral(v.SQLLiteral(0))
-	case types.BOOL:
+	case types.Bool:
 		return boolValueFromLiteral(v.SQLLiteral(0))
-	case types.FLOAT, types.DOUBLE:
+	case types.Float, types.Double:
 		return floatValueFromLiteral(v.SQLLiteral(0))
-	case types.STRING:
+	case types.String:
 		return StringValue(v.StringValue()), nil
 	case types.ENUM:
 		return stringValueFromLiteral(v.SQLLiteral(0))
-	case types.BYTES:
+	case types.Bytes:
 		return bytesValueFromLiteral(v.SQLLiteral(0)), nil
-	case types.DATE:
+	case types.Date:
 		return dateValueFromLiteral(v.ToInt64()), nil
-	case types.DATETIME:
+	case types.Datetime:
 		return datetimeValueFromLiteral(v.ToPacked64DatetimeMicros()), nil
-	case types.TIME:
+	case types.Time:
 		return timeValueFromLiteral(v.ToPacked64TimeMicros()), nil
-	case types.TIMESTAMP:
+	case types.Timestamp:
 		microsec := v.ToUnixMicros()
 		microSecondsInSecond := int64(time.Second) / int64(time.Microsecond)
 		sec := microsec / microSecondsInSecond
 		remainder := microsec - (sec * microSecondsInSecond)
 		return timestampValueFromLiteral(time.Unix(sec, remainder*int64(time.Microsecond)))
-	case types.NUMERIC, types.BIG_NUMERIC:
+	case types.Numeric, types.BigNumeric:
 		return numericValueFromLiteral(v.SQLLiteral(0))
-	case types.INTERVAL:
+	case types.Interval:
 		return intervalValueFromLiteral(v.SQLLiteral(0))
-	case types.JSON:
+	case types.Json:
 		return jsonValueFromLiteral(v.JSONString())
-	case types.ARRAY:
+	case types.Array:
 		return arrayValueFromLiteral(v)
-	case types.STRUCT:
+	case types.Struct:
 		return structValueFromLiteral(v)
 	}
 	return nil, fmt.Errorf("unsupported literal type: %s", v.Type().Kind())
@@ -358,67 +358,67 @@ func CastValue(t types.Type, v Value) (Value, error) {
 		return nil, nil
 	}
 	switch t.Kind() {
-	case types.INT32, types.INT64, types.UINT32, types.UINT64:
+	case types.Int32, types.Int64, types.Uint32, types.Uint64:
 		i64, err := v.ToInt64()
 		if err != nil {
 			return nil, err
 		}
 		return IntValue(i64), nil
-	case types.BOOL:
+	case types.Bool:
 		b, err := v.ToBool()
 		if err != nil {
 			return nil, err
 		}
 		return BoolValue(b), nil
-	case types.FLOAT, types.DOUBLE:
+	case types.Float, types.Double:
 		f64, err := v.ToFloat64()
 		if err != nil {
 			return nil, err
 		}
 		return FloatValue(f64), nil
-	case types.STRING, types.ENUM:
+	case types.String, types.ENUM:
 		s, err := v.ToString()
 		if err != nil {
 			return nil, err
 		}
 		return StringValue(s), nil
-	case types.BYTES:
+	case types.Bytes:
 		b, err := v.ToBytes()
 		if err != nil {
 			return nil, err
 		}
 		return BytesValue(b), nil
-	case types.DATE:
+	case types.Date:
 		t, err := v.ToTime()
 		if err != nil {
 			return nil, err
 		}
 		return DateValue(t), nil
-	case types.DATETIME:
+	case types.Datetime:
 		t, err := v.ToTime()
 		if err != nil {
 			return nil, err
 		}
 		return DatetimeValue(t), nil
-	case types.TIME:
+	case types.Time:
 		t, err := v.ToTime()
 		if err != nil {
 			return nil, err
 		}
 		return TimeValue(t), nil
-	case types.TIMESTAMP:
+	case types.Timestamp:
 		t, err := v.ToTime()
 		if err != nil {
 			return nil, err
 		}
 		return TimestampValue(t), nil
-	case types.INTERVAL:
+	case types.Interval:
 		s, err := v.ToString()
 		if err != nil {
 			return nil, err
 		}
 		return parseInterval(s)
-	case types.ARRAY:
+	case types.Array:
 		array, err := v.ToArray()
 		if err != nil {
 			return nil, err
@@ -433,7 +433,7 @@ func CastValue(t types.Type, v Value) (Value, error) {
 			ret.values = append(ret.values, casted)
 		}
 		return ret, nil
-	case types.STRUCT:
+	case types.Struct:
 		if array, ok := v.(*ArrayValue); ok {
 			ret := &StructValue{m: map[string]Value{}}
 			for _, value := range array.values {
@@ -481,25 +481,25 @@ func CastValue(t types.Type, v Value) (Value, error) {
 			ret.m[key] = casted
 		}
 		return ret, nil
-	case types.NUMERIC:
+	case types.Numeric:
 		r, err := v.ToRat()
 		if err != nil {
 			return nil, err
 		}
 		return &NumericValue{Rat: r}, nil
-	case types.BIG_NUMERIC:
+	case types.BigNumeric:
 		r, err := v.ToRat()
 		if err != nil {
 			return nil, err
 		}
 		return &NumericValue{Rat: r, isBigNumeric: true}, nil
-	case types.JSON:
+	case types.Json:
 		j, err := v.ToJSON()
 		if err != nil {
 			return nil, err
 		}
 		return JsonValue(j), nil
-	case types.GEOGRAPHY:
+	case types.Geography:
 		return v, nil
 	}
 	return nil, fmt.Errorf("unsupported cast %s value", t.Kind())

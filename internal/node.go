@@ -1,7 +1,7 @@
 package internal
 
 import (
-	ast "github.com/goccy/go-zetasql/resolved_ast"
+	ast "github.com/glassmonkey/zetasql-wasm/resolved_ast"
 )
 
 func newNode(node ast.Node) Formatter {
@@ -9,369 +9,369 @@ func newNode(node ast.Node) Formatter {
 		return nil
 	}
 	switch node.Kind() {
-	case ast.Literal:
+	case ast.LiteralNode:
 		return newLiteralNode(node.(*ast.LiteralNode))
-	case ast.Parameter:
+	case ast.ParameterNode:
 		return newParameterNode(node.(*ast.ParameterNode))
-	case ast.ExpressionColumn:
+	case ast.ExpressionColumnNode:
 		return newExpressionColumnNode(node.(*ast.ExpressionColumnNode))
-	case ast.ColumnRef:
+	case ast.ColumnRefNode:
 		return newColumnRefNode(node.(*ast.ColumnRefNode))
-	case ast.Constant:
+	case ast.ConstantNode:
 		return newConstantNode(node.(*ast.ConstantNode))
-	case ast.SystemVariable:
+	case ast.SystemVariableNode:
 		return newSystemVariableNode(node.(*ast.SystemVariableNode))
-	case ast.InlineLambda:
+	case ast.InlineLambdaNode:
 		return newInlineLambdaNode(node.(*ast.InlineLambdaNode))
-	case ast.FilterFieldArg:
+	case ast.FilterFieldArgNode:
 		return newFilterFieldArgNode(node.(*ast.FilterFieldArgNode))
-	case ast.FilterField:
+	case ast.FilterFieldNode:
 		return newFilterFieldNode(node.(*ast.FilterFieldNode))
-	case ast.FunctionCall:
+	case ast.FunctionCallNode:
 		return newFunctionCallNode(node.(*ast.FunctionCallNode))
-	case ast.AggregateFunctionCall:
+	case ast.AggregateFunctionCallNode:
 		return newAggregateFunctionCallNode(node.(*ast.AggregateFunctionCallNode))
-	case ast.AnalyticFunctionCall:
+	case ast.AnalyticFunctionCallNode:
 		return newAnalyticFunctionCallNode(node.(*ast.AnalyticFunctionCallNode))
-	case ast.ExtendedCastElement:
+	case ast.ExtendedCastElementNode:
 		return newExtendedCastElementNode(node.(*ast.ExtendedCastElementNode))
-	case ast.ExtendedCast:
+	case ast.ExtendedCastNode:
 		return newExtendedCastNode(node.(*ast.ExtendedCastNode))
-	case ast.Cast:
+	case ast.CastNode:
 		return newCastNode(node.(*ast.CastNode))
-	case ast.MakeStruct:
+	case ast.MakeStructNode:
 		return newMakeStructNode(node.(*ast.MakeStructNode))
-	case ast.MakeProto:
+	case ast.MakeProtoNode:
 		return newMakeProtoNode(node.(*ast.MakeProtoNode))
-	case ast.MakeProtoField:
+	case ast.MakeProtoFieldNode:
 		return newMakeProtoFieldNode(node.(*ast.MakeProtoFieldNode))
-	case ast.GetStructField:
+	case ast.GetStructFieldNode:
 		return newGetStructFieldNode(node.(*ast.GetStructFieldNode))
-	case ast.GetProtoField:
+	case ast.GetProtoFieldNode:
 		return newGetProtoFieldNode(node.(*ast.GetProtoFieldNode))
-	case ast.GetJsonField:
+	case ast.GetJsonFieldNode:
 		return newGetJsonFieldNode(node.(*ast.GetJsonFieldNode))
-	case ast.Flatten:
+	case ast.FlattenNode:
 		return newFlattenNode(node.(*ast.FlattenNode))
-	case ast.FlattenedArg:
+	case ast.FlattenedArgNode:
 		return newFlattenedArgNode(node.(*ast.FlattenedArgNode))
-	case ast.ReplaceFieldItem:
+	case ast.ReplaceFieldItemNode:
 		return newReplaceFieldItemNode(node.(*ast.ReplaceFieldItemNode))
-	case ast.ReplaceField:
+	case ast.ReplaceFieldNode:
 		return newReplaceFieldNode(node.(*ast.ReplaceFieldNode))
-	case ast.SubqueryExpr:
+	case ast.SubqueryExprNode:
 		return newSubqueryExprNode(node.(*ast.SubqueryExprNode))
 	case ast.LetExpr:
 		return newLetExprNode(node.(*ast.LetExprNode))
-	case ast.Model:
+	case ast.ModelNode:
 		return newModelNode(node.(*ast.ModelNode))
-	case ast.Connection:
+	case ast.ConnectionNode:
 		return newConnectionNode(node.(*ast.ConnectionNode))
-	case ast.Descriptor:
+	case ast.DescriptorNode:
 		return newDescriptorNode(node.(*ast.DescriptorNode))
-	case ast.SingleRowScan:
+	case ast.SingleRowScanNode:
 		return newSingleRowScanNode(node.(*ast.SingleRowScanNode))
-	case ast.TableScan:
+	case ast.TableScanNode:
 		return newTableScanNode(node.(*ast.TableScanNode))
-	case ast.JoinScan:
+	case ast.JoinScanNode:
 		return newJoinScanNode(node.(*ast.JoinScanNode))
-	case ast.ArrayScan:
+	case ast.ArrayScanNode:
 		return newArrayScanNode(node.(*ast.ArrayScanNode))
-	case ast.ColumnHolder:
+	case ast.ColumnHolderNode:
 		return newColumnHolderNode(node.(*ast.ColumnHolderNode))
-	case ast.FilterScan:
+	case ast.FilterScanNode:
 		return newFilterScanNode(node.(*ast.FilterScanNode))
-	case ast.GroupingSet:
+	case ast.GroupingSetNode:
 		return newGroupingSetNode(node.(*ast.GroupingSetNode))
-	case ast.AggregateScan:
+	case ast.AggregateScanNode:
 		return newAggregateScanNode(node.(*ast.AggregateScanNode))
-	case ast.AnonymizedAggregateScan:
+	case ast.AnonymizedAggregateScanNode:
 		return newAnonymizedAggregateScanNode(node.(*ast.AnonymizedAggregateScanNode))
-	case ast.SetOperationItem:
+	case ast.SetOperationItemNode:
 		return newSetOperationItemNode(node.(*ast.SetOperationItemNode))
-	case ast.SetOperationScan:
+	case ast.SetOperationScanNode:
 		return newSetOperationScanNode(node.(*ast.SetOperationScanNode))
-	case ast.OrderByScan:
+	case ast.OrderByScanNode:
 		return newOrderByScanNode(node.(*ast.OrderByScanNode))
-	case ast.LimitOffsetScan:
+	case ast.LimitOffsetScanNode:
 		return newLimitOffsetScanNode(node.(*ast.LimitOffsetScanNode))
-	case ast.WithRefScan:
+	case ast.WithRefScanNode:
 		return newWithRefScanNode(node.(*ast.WithRefScanNode))
-	case ast.AnalyticScan:
+	case ast.AnalyticScanNode:
 		return newAnalyticScanNode(node.(*ast.AnalyticScanNode))
-	case ast.SampleScan:
+	case ast.SampleScanNode:
 		return newSampleScanNode(node.(*ast.SampleScanNode))
-	case ast.ComputedColumn:
+	case ast.ComputedColumnNode:
 		return newComputedColumnNode(node.(*ast.ComputedColumnNode))
-	case ast.OrderByItem:
+	case ast.OrderByItemNode:
 		return newOrderByItemNode(node.(*ast.OrderByItemNode))
-	case ast.ColumnAnnotations:
+	case ast.ColumnAnnotationsNode:
 		return newColumnAnnotationsNode(node.(*ast.ColumnAnnotationsNode))
-	case ast.GeneratedColumnInfo:
+	case ast.GeneratedColumnInfoNode:
 		return newGeneratedColumnInfoNode(node.(*ast.GeneratedColumnInfoNode))
-	case ast.ColumnDefaultValue:
+	case ast.ColumnDefaultValueNode:
 		return newColumnDefaultValueNode(node.(*ast.ColumnDefaultValueNode))
-	case ast.ColumnDefinition:
+	case ast.ColumnDefinitionNode:
 		return newColumnDefinitionNode(node.(*ast.ColumnDefinitionNode))
-	case ast.PrimaryKey:
+	case ast.PrimaryKeyNode:
 		return newPrimaryKeyNode(node.(*ast.PrimaryKeyNode))
-	case ast.ForeignKey:
+	case ast.ForeignKeyNode:
 		return newForeignKeyNode(node.(*ast.ForeignKeyNode))
-	case ast.CheckConstraint:
+	case ast.CheckConstraintNode:
 		return newCheckConstraintNode(node.(*ast.CheckConstraintNode))
-	case ast.OutputColumn:
+	case ast.OutputColumnNode:
 		return newOutputColumnNode(node.(*ast.OutputColumnNode))
-	case ast.ProjectScan:
+	case ast.ProjectScanNode:
 		return newProjectScanNode(node.(*ast.ProjectScanNode))
-	case ast.TVFScan:
+	case ast.TVFScanNode:
 		return newTVFScanNode(node.(*ast.TVFScanNode))
-	case ast.GroupRowsScan:
+	case ast.GroupRowsScanNode:
 		return newGroupRowsScanNode(node.(*ast.GroupRowsScanNode))
-	case ast.FunctionArgument:
+	case ast.FunctionArgumentNode:
 		return newFunctionArgumentNode(node.(*ast.FunctionArgumentNode))
-	case ast.ExplainStmt:
+	case ast.ExplainStmtNode:
 		return newExplainStmtNode(node.(*ast.ExplainStmtNode))
-	case ast.QueryStmt:
+	case ast.QueryStmtNode:
 		return newQueryStmtNode(node.(*ast.QueryStmtNode))
-	case ast.CreateDatabaseStmt:
+	case ast.CreateDatabaseStmtNode:
 		return newCreateDatabaseStmtNode(node.(*ast.CreateDatabaseStmtNode))
-	case ast.IndexItem:
+	case ast.IndexItemNode:
 		return newIndexItemNode(node.(*ast.IndexItemNode))
-	case ast.UnnestItem:
+	case ast.UnnestItemNode:
 		return newUnnestItemNode(node.(*ast.UnnestItemNode))
-	case ast.CreateIndexStmt:
+	case ast.CreateIndexStmtNode:
 		return newCreateIndexStmtNode(node.(*ast.CreateIndexStmtNode))
-	case ast.CreateSchemaStmt:
+	case ast.CreateSchemaStmtNode:
 		return newCreateSchemaStmtNode(node.(*ast.CreateSchemaStmtNode))
-	case ast.CreateTableStmt:
+	case ast.CreateTableStmtNode:
 		return newCreateTableStmtNode(node.(*ast.CreateTableStmtNode))
-	case ast.CreateTableAsSelectStmt:
+	case ast.CreateTableAsSelectStmtNode:
 		return newCreateTableAsSelectStmtNode(node.(*ast.CreateTableAsSelectStmtNode))
-	case ast.CreateModelStmt:
+	case ast.CreateModelStmtNode:
 		return newCreateModelStmtNode(node.(*ast.CreateModelStmtNode))
-	case ast.CreateViewStmt:
+	case ast.CreateViewStmtNode:
 		return newCreateViewStmtNode(node.(*ast.CreateViewStmtNode))
-	case ast.WithPartitionColumns:
+	case ast.WithPartitionColumnsNode:
 		return newWithPartitionColumnsNode(node.(*ast.WithPartitionColumnsNode))
-	case ast.CreateSnapshotTableStmt:
+	case ast.CreateSnapshotTableStmtNode:
 		return newCreateSnapshotTableStmtNode(node.(*ast.CreateSnapshotTableStmtNode))
-	case ast.CreateExternalTableStmt:
+	case ast.CreateExternalTableStmtNode:
 		return newCreateExternalTableStmtNode(node.(*ast.CreateExternalTableStmtNode))
-	case ast.ExportModelStmt:
+	case ast.ExportModelStmtNode:
 		return newExportModelStmtNode(node.(*ast.ExportModelStmtNode))
-	case ast.ExportDataStmt:
+	case ast.ExportDataStmtNode:
 		return newExportDataStmtNode(node.(*ast.ExportDataStmtNode))
-	case ast.DefineTableStmt:
+	case ast.DefineTableStmtNode:
 		return newDefineTableStmtNode(node.(*ast.DefineTableStmtNode))
-	case ast.DescribeStmt:
+	case ast.DescribeStmtNode:
 		return newDescribeStmtNode(node.(*ast.DescribeStmtNode))
-	case ast.ShowStmt:
+	case ast.ShowStmtNode:
 		return newShowStmtNode(node.(*ast.ShowStmtNode))
-	case ast.BeginStmt:
+	case ast.BeginStmtNode:
 		return newBeginStmtNode(node.(*ast.BeginStmtNode))
-	case ast.SetTransactionStmt:
+	case ast.SetTransactionStmtNode:
 		return newSetTransactionStmtNode(node.(*ast.SetTransactionStmtNode))
-	case ast.CommitStmt:
+	case ast.CommitStmtNode:
 		return newCommitStmtNode(node.(*ast.CommitStmtNode))
-	case ast.RollbackStmt:
+	case ast.RollbackStmtNode:
 		return newRollbackStmtNode(node.(*ast.RollbackStmtNode))
-	case ast.StartBatchStmt:
+	case ast.StartBatchStmtNode:
 		return newStartBatchStmtNode(node.(*ast.StartBatchStmtNode))
-	case ast.RunBatchStmt:
+	case ast.RunBatchStmtNode:
 		return newRunBatchStmtNode(node.(*ast.RunBatchStmtNode))
-	case ast.AbortBatchStmt:
+	case ast.AbortBatchStmtNode:
 		return newAbortBatchStmtNode(node.(*ast.AbortBatchStmtNode))
-	case ast.DropStmt:
+	case ast.DropStmtNode:
 		return newDropStmtNode(node.(*ast.DropStmtNode))
-	case ast.DropMaterializedViewStmt:
+	case ast.DropMaterializedViewStmtNode:
 		return newDropMaterializedViewStmtNode(node.(*ast.DropMaterializedViewStmtNode))
-	case ast.DropSnapshotTableStmt:
+	case ast.DropSnapshotTableStmtNode:
 		return newDropSnapshotTableStmtNode(node.(*ast.DropSnapshotTableStmtNode))
-	case ast.RecursiveRefScan:
+	case ast.RecursiveRefScanNode:
 		return newRecursiveRefScanNode(node.(*ast.RecursiveRefScanNode))
-	case ast.RecursiveScan:
+	case ast.RecursiveScanNode:
 		return newRecursiveScanNode(node.(*ast.RecursiveScanNode))
-	case ast.WithScan:
+	case ast.WithScanNode:
 		return newWithScanNode(node.(*ast.WithScanNode))
-	case ast.WithEntry:
+	case ast.WithEntryNode:
 		return newWithEntryNode(node.(*ast.WithEntryNode))
-	case ast.Option:
+	case ast.OptionNode:
 		return newOptionNode(node.(*ast.OptionNode))
-	case ast.WindowPartitioning:
+	case ast.WindowPartitioningNode:
 		return newWindowPartitioningNode(node.(*ast.WindowPartitioningNode))
-	case ast.WindowOrdering:
+	case ast.WindowOrderingNode:
 		return newWindowOrderingNode(node.(*ast.WindowOrderingNode))
-	case ast.WindowFrame:
+	case ast.WindowFrameNode:
 		return newWindowFrameNode(node.(*ast.WindowFrameNode))
-	case ast.AnalyticFunctionGroup:
+	case ast.AnalyticFunctionGroupNode:
 		return newAnalyticFunctionGroupNode(node.(*ast.AnalyticFunctionGroupNode))
-	case ast.WindowFrameExpr:
+	case ast.WindowFrameExprNode:
 		return newWindowFrameExprNode(node.(*ast.WindowFrameExprNode))
-	case ast.DMLValue:
+	case ast.DMLValueNode:
 		return newDMLValueNode(node.(*ast.DMLValueNode))
-	case ast.DMLDefault:
+	case ast.DMLDefaultNode:
 		return newDMLDefaultNode(node.(*ast.DMLDefaultNode))
-	case ast.AssertStmt:
+	case ast.AssertStmtNode:
 		return newAssertStmtNode(node.(*ast.AssertStmtNode))
-	case ast.AssertRowsModified:
+	case ast.AssertRowsModifiedNode:
 		return newAssertRowsModifiedNode(node.(*ast.AssertRowsModifiedNode))
-	case ast.InsertRow:
+	case ast.InsertRowNode:
 		return newInsertRowNode(node.(*ast.InsertRowNode))
-	case ast.InsertStmt:
+	case ast.InsertStmtNode:
 		return newInsertStmtNode(node.(*ast.InsertStmtNode))
-	case ast.DeleteStmt:
+	case ast.DeleteStmtNode:
 		return newDeleteStmtNode(node.(*ast.DeleteStmtNode))
-	case ast.UpdateItem:
+	case ast.UpdateItemNode:
 		return newUpdateItemNode(node.(*ast.UpdateItemNode))
 	case ast.UpdateArrayItem:
 		return newUpdateArrayItemNode(node.(*ast.UpdateArrayItemNode))
-	case ast.UpdateStmt:
+	case ast.UpdateStmtNode:
 		return newUpdateStmtNode(node.(*ast.UpdateStmtNode))
-	case ast.MergeWhen:
+	case ast.MergeWhenNode:
 		return newMergeWhenNode(node.(*ast.MergeWhenNode))
-	case ast.MergeStmt:
+	case ast.MergeStmtNode:
 		return newMergeStmtNode(node.(*ast.MergeStmtNode))
-	case ast.TruncateStmt:
+	case ast.TruncateStmtNode:
 		return newTruncateStmtNode(node.(*ast.TruncateStmtNode))
-	case ast.ObjectUnit:
+	case ast.ObjectUnitNode:
 		return newObjectUnitNode(node.(*ast.ObjectUnitNode))
-	case ast.Privilege:
+	case ast.PrivilegeNode:
 		return newPrivilegeNode(node.(*ast.PrivilegeNode))
-	case ast.GrantStmt:
+	case ast.GrantStmtNode:
 		return newGrantStmtNode(node.(*ast.GrantStmtNode))
-	case ast.RevokeStmt:
+	case ast.RevokeStmtNode:
 		return newRevokeStmtNode(node.(*ast.RevokeStmtNode))
-	case ast.AlterDatabaseStmt:
+	case ast.AlterDatabaseStmtNode:
 		return newAlterDatabaseStmtNode(node.(*ast.AlterDatabaseStmtNode))
-	case ast.AlterMaterializedViewStmt:
+	case ast.AlterMaterializedViewStmtNode:
 		return newAlterMaterializedViewStmtNode(node.(*ast.AlterMaterializedViewStmtNode))
-	case ast.AlterSchemaStmt:
+	case ast.AlterSchemaStmtNode:
 		return newAlterSchemaStmtNode(node.(*ast.AlterSchemaStmtNode))
-	case ast.AlterTableStmt:
+	case ast.AlterTableStmtNode:
 		return newAlterTableStmtNode(node.(*ast.AlterTableStmtNode))
-	case ast.AlterViewStmt:
+	case ast.AlterViewStmtNode:
 		return newAlterViewStmtNode(node.(*ast.AlterViewStmtNode))
-	case ast.SetOptionsAction:
+	case ast.SetOptionsActionNode:
 		return newSetOptionsActionNode(node.(*ast.SetOptionsActionNode))
-	case ast.AddColumnAction:
+	case ast.AddColumnActionNode:
 		return newAddColumnActionNode(node.(*ast.AddColumnActionNode))
-	case ast.AddConstraintAction:
+	case ast.AddConstraintActionNode:
 		return newAddConstraintActionNode(node.(*ast.AddConstraintActionNode))
-	case ast.DropConstraintAction:
+	case ast.DropConstraintActionNode:
 		return newDropConstraintActionNode(node.(*ast.DropConstraintActionNode))
-	case ast.DropPrimaryKeyAction:
+	case ast.DropPrimaryKeyActionNode:
 		return newDropPrimaryKeyActionNode(node.(*ast.DropPrimaryKeyActionNode))
-	case ast.AlterColumnOptionsAction:
+	case ast.AlterColumnOptionsActionNode:
 		return newAlterColumnOptionsActionNode(node.(*ast.AlterColumnOptionsActionNode))
-	case ast.AlterColumnDropNotNullAction:
+	case ast.AlterColumnDropNotNullActionNode:
 		return newAlterColumnDropNotNullActionNode(node.(*ast.AlterColumnDropNotNullActionNode))
-	case ast.AlterColumnSetDataTypeAction:
+	case ast.AlterColumnSetDataTypeActionNode:
 		return newAlterColumnSetDataTypeActionNode(node.(*ast.AlterColumnSetDataTypeActionNode))
-	case ast.AlterColumnSetDefaultAction:
+	case ast.AlterColumnSetDefaultActionNode:
 		return newAlterColumnSetDefaultActionNode(node.(*ast.AlterColumnSetDefaultActionNode))
-	case ast.AlterColumnDropDefaultAction:
+	case ast.AlterColumnDropDefaultActionNode:
 		return newAlterColumnDropDefaultActionNode(node.(*ast.AlterColumnDropDefaultActionNode))
-	case ast.DropColumnAction:
+	case ast.DropColumnActionNode:
 		return newDropColumnActionNode(node.(*ast.DropColumnActionNode))
-	case ast.RenameColumnAction:
+	case ast.RenameColumnActionNode:
 		return newRenameColumnActionNode(node.(*ast.RenameColumnActionNode))
-	case ast.SetAsAction:
+	case ast.SetAsActionNode:
 		return newSetAsActionNode(node.(*ast.SetAsActionNode))
-	case ast.SetCollateClause:
+	case ast.SetCollateClauseNode:
 		return newSetCollateClauseNode(node.(*ast.SetCollateClauseNode))
-	case ast.AlterTableSetOptionsStmt:
+	case ast.AlterTableSetOptionsStmtNode:
 		return newAlterTableSetOptionsStmtNode(node.(*ast.AlterTableSetOptionsStmtNode))
-	case ast.RenameStmt:
+	case ast.RenameStmtNode:
 		return newRenameStmtNode(node.(*ast.RenameStmtNode))
-	case ast.CreatePrivilegeRestrictionStmt:
+	case ast.CreatePrivilegeRestrictionStmtNode:
 		return newCreatePrivilegeRestrictionStmtNode(node.(*ast.CreatePrivilegeRestrictionStmtNode))
-	case ast.CreateRowAccessPolicyStmt:
+	case ast.CreateRowAccessPolicyStmtNode:
 		return newCreateRowAccessPolicyStmtNode(node.(*ast.CreateRowAccessPolicyStmtNode))
-	case ast.DropPrivilegeRestrictionStmt:
+	case ast.DropPrivilegeRestrictionStmtNode:
 		return newDropPrivilegeRestrictionStmtNode(node.(*ast.DropPrivilegeRestrictionStmtNode))
-	case ast.DropRowAccessPolicyStmt:
+	case ast.DropRowAccessPolicyStmtNode:
 		return newDropRowAccessPolicyStmtNode(node.(*ast.DropRowAccessPolicyStmtNode))
 	case ast.DropSearchIndexStmt:
 		return newDropSearchIndexStmtNode(node.(*ast.DropSearchIndexStmtNode))
-	case ast.GrantToAction:
+	case ast.GrantToActionNode:
 		return newGrantToActionNode(node.(*ast.GrantToActionNode))
-	case ast.RestrictToAction:
+	case ast.RestrictToActionNode:
 		return newRestrictToActionNode(node.(*ast.RestrictToActionNode))
-	case ast.AddToRestricteeListAction:
+	case ast.AddToRestricteeListActionNode:
 		return newAddToRestricteeListActionNode(node.(*ast.AddToRestricteeListActionNode))
-	case ast.RemoveFromRestricteeListAction:
+	case ast.RemoveFromRestricteeListActionNode:
 		return newRemoveFromRestricteeListActionNode(node.(*ast.RemoveFromRestricteeListActionNode))
-	case ast.FilterUsingAction:
+	case ast.FilterUsingActionNode:
 		return newFilterUsingActionNode(node.(*ast.FilterUsingActionNode))
-	case ast.RevokeFromAction:
+	case ast.RevokeFromActionNode:
 		return newRevokeFromActionNode(node.(*ast.RevokeFromActionNode))
-	case ast.RenameToAction:
+	case ast.RenameToActionNode:
 		return newRenameToActionNode(node.(*ast.RenameToActionNode))
-	case ast.AlterPrivilegeRestrictionStmt:
+	case ast.AlterPrivilegeRestrictionStmtNode:
 		return newAlterPrivilegeRestrictionStmtNode(node.(*ast.AlterPrivilegeRestrictionStmtNode))
-	case ast.AlterRowAccessPolicyStmt:
+	case ast.AlterRowAccessPolicyStmtNode:
 		return newAlterRowAccessPolicyStmtNode(node.(*ast.AlterRowAccessPolicyStmtNode))
-	case ast.AlterAllRowAccessPoliciesStmt:
+	case ast.AlterAllRowAccessPoliciesStmtNode:
 		return newAlterAllRowAccessPoliciesStmtNode(node.(*ast.AlterAllRowAccessPoliciesStmtNode))
-	case ast.CreateConstantStmt:
+	case ast.CreateConstantStmtNode:
 		return newCreateConstantStmtNode(node.(*ast.CreateConstantStmtNode))
-	case ast.CreateFunctionStmt:
+	case ast.CreateFunctionStmtNode:
 		return newCreateFunctionStmtNode(node.(*ast.CreateFunctionStmtNode))
-	case ast.ArgumentDef:
+	case ast.ArgumentDefNode:
 		return newArgumentDefNode(node.(*ast.ArgumentDefNode))
-	case ast.ArgumentRef:
+	case ast.ArgumentRefNode:
 		return newArgumentRefNode(node.(*ast.ArgumentRefNode))
-	case ast.CreateTableFunctionStmt:
+	case ast.CreateTableFunctionStmtNode:
 		return newCreateTableFunctionStmtNode(node.(*ast.CreateTableFunctionStmtNode))
-	case ast.RelationArgumentScan:
+	case ast.RelationArgumentScanNode:
 		return newRelationArgumentScanNode(node.(*ast.RelationArgumentScanNode))
-	case ast.ArgumentList:
+	case ast.ArgumentListNode:
 		return newArgumentListNode(node.(*ast.ArgumentListNode))
-	case ast.FunctionSignatureHolder:
+	case ast.FunctionSignatureHolderNode:
 		return newFunctionSignatureHolderNode(node.(*ast.FunctionSignatureHolderNode))
-	case ast.DropFunctionStmt:
+	case ast.DropFunctionStmtNode:
 		return newDropFunctionStmtNode(node.(*ast.DropFunctionStmtNode))
-	case ast.DropTableFunctionStmt:
+	case ast.DropTableFunctionStmtNode:
 		return newDropTableFunctionStmtNode(node.(*ast.DropTableFunctionStmtNode))
-	case ast.CallStmt:
+	case ast.CallStmtNode:
 		return newCallStmtNode(node.(*ast.CallStmtNode))
-	case ast.ImportStmt:
+	case ast.ImportStmtNode:
 		return newImportStmtNode(node.(*ast.ImportStmtNode))
-	case ast.ModuleStmt:
+	case ast.ModuleStmtNode:
 		return newModuleStmtNode(node.(*ast.ModuleStmtNode))
-	case ast.AggregateHavingModifier:
+	case ast.AggregateHavingModifierNode:
 		return newAggregateHavingModifierNode(node.(*ast.AggregateHavingModifierNode))
-	case ast.CreateMaterializedViewStmt:
+	case ast.CreateMaterializedViewStmtNode:
 		return newCreateMaterializedViewStmtNode(node.(*ast.CreateMaterializedViewStmtNode))
-	case ast.CreateProcedureStmt:
+	case ast.CreateProcedureStmtNode:
 		return newCreateProcedureStmtNode(node.(*ast.CreateProcedureStmtNode))
-	case ast.ExecuteImmediateArgument:
+	case ast.ExecuteImmediateArgumentNode:
 		return newExecuteImmediateArgumentNode(node.(*ast.ExecuteImmediateArgumentNode))
-	case ast.ExecuteImmediateStmt:
+	case ast.ExecuteImmediateStmtNode:
 		return newExecuteImmediateStmtNode(node.(*ast.ExecuteImmediateStmtNode))
-	case ast.AssignmentStmt:
+	case ast.AssignmentStmtNode:
 		return newAssignmentStmtNode(node.(*ast.AssignmentStmtNode))
-	case ast.CreateEntityStmt:
+	case ast.CreateEntityStmtNode:
 		return newCreateEntityStmtNode(node.(*ast.CreateEntityStmtNode))
-	case ast.AlterEntityStmt:
+	case ast.AlterEntityStmtNode:
 		return newAlterEntityStmtNode(node.(*ast.AlterEntityStmtNode))
-	case ast.PivotColumn:
+	case ast.PivotColumnNode:
 		return newPivotColumnNode(node.(*ast.PivotColumnNode))
-	case ast.PivotScan:
+	case ast.PivotScanNode:
 		return newPivotScanNode(node.(*ast.PivotScanNode))
-	case ast.ReturningClause:
+	case ast.ReturningClauseNode:
 		return newReturningClauseNode(node.(*ast.ReturningClauseNode))
-	case ast.UnpivotArg:
+	case ast.UnpivotArgNode:
 		return newUnpivotArgNode(node.(*ast.UnpivotArgNode))
-	case ast.UnpivotScan:
+	case ast.UnpivotScanNode:
 		return newUnpivotScanNode(node.(*ast.UnpivotScanNode))
-	case ast.CloneDataStmt:
+	case ast.CloneDataStmtNode:
 		return newCloneDataStmtNode(node.(*ast.CloneDataStmtNode))
-	case ast.TableAndColumnInfo:
+	case ast.TableAndColumnInfoNode:
 		return newTableAndColumnInfoNode(node.(*ast.TableAndColumnInfoNode))
-	case ast.AnalyzeStmt:
+	case ast.AnalyzeStmtNode:
 		return newAnalyzeStmtNode(node.(*ast.AnalyzeStmtNode))
-	case ast.AuxLoadDataStmt:
+	case ast.AuxLoadDataStmtNode:
 		return newAuxLoadDataStmtNode(node.(*ast.AuxLoadDataStmtNode))
 	}
 	return nil

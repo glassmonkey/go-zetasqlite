@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/goccy/go-zetasql/types"
+	"github.com/glassmonkey/zetasql-wasm/types"
 )
 
 const tableSuffixColumnName = "_TABLE_SUFFIX"
@@ -168,7 +168,7 @@ func (c *Catalog) createWildcardTable(path []string) (types.Table, error) {
 	wildcardTable.NamePath = append([]string{}, spec.NamePath...)
 	wildcardTable.Columns = append(wildcardTable.Columns, &ColumnSpec{
 		Name: tableSuffixColumnName,
-		Type: &Type{Kind: types.STRING},
+		Type: &Type{Kind: types.String},
 	})
 	lastNamePath := spec.NamePath[len(spec.NamePath)-1]
 	lastNamePath = lastNamePath[:len(path)-1]

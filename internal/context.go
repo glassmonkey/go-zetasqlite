@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/goccy/go-zetasql"
-	ast "github.com/goccy/go-zetasql/resolved_ast"
+	"github.com/glassmonkey/zetasql-wasm"
+	ast "github.com/glassmonkey/zetasql-wasm/resolved_ast"
 )
 
 type (

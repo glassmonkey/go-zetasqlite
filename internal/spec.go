@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/goccy/go-json"
-	ast "github.com/goccy/go-zetasql/resolved_ast"
-	"github.com/goccy/go-zetasql/types"
+	ast "github.com/glassmonkey/zetasql-wasm/resolved_ast"
+	"github.com/glassmonkey/zetasql-wasm/types"
 )
 
 type NameWithType struct {
@@ -199,17 +199,17 @@ func (t *Type) FunctionArgumentType() (*types.FunctionArgumentType, error) {
 }
 
 func (t *Type) IsArray() bool {
-	return t.Kind == types.ARRAY
+	return t.Kind == types.Array
 }
 
 func (t *Type) IsStruct() bool {
-	return t.Kind == types.STRUCT
+	return t.Kind == types.Struct
 }
 
 func (t *Type) AvailableAutoIndex() bool {
 	switch t.Kind {
-	case types.BYTES, types.JSON, types.ARRAY, types.STRUCT,
-		types.GEOGRAPHY, types.PROTO, types.EXTENDED:
+	case types.Bytes, types.Json, types.Array, types.Struct,
+		types.Geography, types.PROTO, types.EXTENDED:
 		return false
 	}
 	return true
@@ -217,22 +217,22 @@ func (t *Type) AvailableAutoIndex() bool {
 
 func (t *Type) GoReflectType() (reflect.Type, error) {
 	switch t.Kind {
-	case types.INT32, types.INT64, types.UINT32, types.UINT64:
+	case types.Int32, types.Int64, types.Uint32, types.Uint64:
 		return reflect.TypeOf(int64(0)), nil
-	case types.BOOL:
+	case types.Bool:
 		return reflect.TypeOf(false), nil
-	case types.FLOAT, types.DOUBLE:
+	case types.Float, types.Double:
 		return reflect.TypeOf(float64(0)), nil
-	case types.BYTES, types.STRING, types.NUMERIC, types.BIG_NUMERIC,
-		types.DATE, types.DATETIME, types.TIME, types.TIMESTAMP, types.INTERVAL, types.JSON:
+	case types.Bytes, types.String, types.Numeric, types.BigNumeric,
+		types.Date, types.Datetime, types.Time, types.Timestamp, types.Interval, types.Json:
 		return reflect.TypeOf(""), nil
-	case types.ARRAY:
+	case types.Array:
 		elem, err := t.ElementType.GoReflectType()
 		if err != nil {
 			return nil, err
 		}
 		return reflect.SliceOf(elem), nil
-	case types.STRUCT:
+	case types.Struct:
 		return reflect.TypeOf(map[string]interface{}{}), nil
 	}
 	return nil, fmt.Errorf("cannot convert %s to reflect.Type", t.Name)
@@ -240,13 +240,13 @@ func (t *Type) GoReflectType() (reflect.Type, error) {
 
 func (t *Type) ToZetaSQLType() (types.Type, error) {
 	switch types.TypeKind(t.Kind) {
-	case types.ARRAY:
+	case types.Array:
 		typ, err := t.ElementType.ToZetaSQLType()
 		if err != nil {
 			return nil, err
 		}
 		return types.NewArrayType(typ)
-	case types.STRUCT:
+	case types.Struct:
 		var fields []*types.StructField
 		for _, field := range t.FieldTypes {
 			typ, err := field.Type.ToZetaSQLType()
@@ -262,13 +262,13 @@ func (t *Type) ToZetaSQLType() (types.Type, error) {
 
 func (t *Type) FormatType() string {
 	switch t.Kind {
-	case types.STRUCT:
+	case types.Struct:
 		formatTypes := make([]string, 0, len(t.FieldTypes))
 		for _, field := range t.FieldTypes {
 			formatTypes = append(formatTypes, fmt.Sprintf("`%s` %s", field.Name, field.Type.FormatType()))
 		}
 		return fmt.Sprintf("STRUCT<%s>", strings.Join(formatTypes, ","))
-	case types.ARRAY:
+	case types.Array:
 		return fmt.Sprintf("ARRAY<%s>", t.ElementType.FormatType())
 	}
 	return types.TypeKind(t.Kind).String()
@@ -277,45 +277,45 @@ func (t *Type) FormatType() string {
 func (s *ColumnSpec) SQLiteSchema() string {
 	var typ string
 	switch types.TypeKind(s.Type.Kind) {
-	case types.INT32, types.INT64, types.UINT32, types.UINT64:
+	case types.Int32, types.Int64, types.Uint32, types.Uint64:
 		typ = "INT"
 	case types.ENUM:
 		typ = "INT"
-	case types.BOOL:
+	case types.Bool:
 		typ = "BOOLEAN"
-	case types.FLOAT:
+	case types.Float:
 		typ = "FLOAT"
-	case types.BYTES:
+	case types.Bytes:
 		typ = "BLOB"
-	case types.DOUBLE:
+	case types.Double:
 		typ = "DOUBLE"
-	case types.JSON:
+	case types.Json:
 		typ = "JSON"
-	case types.STRING:
+	case types.String:
 		typ = "TEXT"
-	case types.DATE:
+	case types.Date:
 		typ = "TEXT"
-	case types.TIMESTAMP:
+	case types.Timestamp:
 		typ = "TEXT"
-	case types.ARRAY:
+	case types.Array:
 		typ = "TEXT"
-	case types.STRUCT:
+	case types.Struct:
 		typ = "TEXT"
 	case types.PROTO:
 		typ = "TEXT"
-	case types.TIME:
+	case types.Time:
 		typ = "TEXT"
-	case types.DATETIME:
+	case types.Datetime:
 		typ = "TEXT"
-	case types.GEOGRAPHY:
+	case types.Geography:
 		typ = "TEXT"
-	case types.NUMERIC:
+	case types.Numeric:
 		typ = "TEXT"
-	case types.BIG_NUMERIC:
+	case types.BigNumeric:
 		typ = "TEXT"
 	case types.EXTENDED:
 		typ = "TEXT"
-	case types.INTERVAL:
+	case types.Interval:
 		typ = "TEXT"
 	default:
 		typ = "UNKNOWN"
@@ -581,9 +581,9 @@ func newType(t types.Type) *Type {
 		fieldTypes []*NameWithType
 	)
 	switch kind {
-	case types.ARRAY:
+	case types.Array:
 		elem = newType(t.AsArray().ElementType())
-	case types.STRUCT:
+	case types.Struct:
 		for _, field := range t.AsStruct().Fields() {
 			fieldTypes = append(fieldTypes, &NameWithType{
 				Name: field.Name(),

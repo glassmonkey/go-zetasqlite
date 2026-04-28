@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/goccy/go-json"
-	"github.com/goccy/go-zetasql/types"
+	"github.com/glassmonkey/zetasql-wasm/types"
 )
 
 var (
