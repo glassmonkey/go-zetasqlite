@@ -153,6 +153,29 @@ func KindString(k types.TypeKind) string {
 	return generated.TypeKind(k).String()
 }
 
+// SupportedStatementKinds returns the resolved-node statement kinds that
+// go-zetasqlite asks the analyzer to accept.
+func SupportedStatementKinds() []generated.ResolvedNodeKind {
+	return []generated.ResolvedNodeKind{
+		generated.ResolvedNodeKind_RESOLVED_BEGIN_STMT,
+		generated.ResolvedNodeKind_RESOLVED_COMMIT_STMT,
+		generated.ResolvedNodeKind_RESOLVED_MERGE_STMT,
+		generated.ResolvedNodeKind_RESOLVED_QUERY_STMT,
+		generated.ResolvedNodeKind_RESOLVED_INSERT_STMT,
+		generated.ResolvedNodeKind_RESOLVED_UPDATE_STMT,
+		generated.ResolvedNodeKind_RESOLVED_DELETE_STMT,
+		generated.ResolvedNodeKind_RESOLVED_DROP_STMT,
+		generated.ResolvedNodeKind_RESOLVED_TRUNCATE_STMT,
+		generated.ResolvedNodeKind_RESOLVED_CREATE_TABLE_STMT,
+		generated.ResolvedNodeKind_RESOLVED_CREATE_TABLE_AS_SELECT_STMT,
+		generated.ResolvedNodeKind_RESOLVED_CREATE_PROCEDURE_STMT,
+		generated.ResolvedNodeKind_RESOLVED_CREATE_FUNCTION_STMT,
+		generated.ResolvedNodeKind_RESOLVED_CREATE_TABLE_FUNCTION_STMT,
+		generated.ResolvedNodeKind_RESOLVED_CREATE_VIEW_STMT,
+		generated.ResolvedNodeKind_RESOLVED_DROP_FUNCTION_STMT,
+	}
+}
+
 // === Resolved AST aliases ===
 
 // JoinType.

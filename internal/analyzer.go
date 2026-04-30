@@ -35,9 +35,9 @@ func NewAnalyzer(catalog *Catalog) (*Analyzer, error) {
 
 func newAnalyzerOptions() (*zetasql.AnalyzerOptions, error) {
 	langOpt := zetasql.NewLanguageOptions()
-	langOpt.SetNameResolutionMode(zsqlcompat.NameResolutionDefault)
-	langOpt.SetProductMode(zsqlcompat.ProductInternal)
-	langOpt.SetEnabledLanguageFeatures([]zsqlcompat.LanguageFeature{
+	langOpt.NameResolutionMode = zsqlcompat.NameResolutionDefault
+	langOpt.ProductMode = zsqlcompat.ProductInternal
+	for _, f := range []zsqlcompat.LanguageFeature{
 		zsqlcompat.FeatureAnalyticFunctions,
 		zsqlcompat.FeatureNamedArguments,
 		zsqlcompat.FeatureNumericType,
@@ -77,34 +77,18 @@ func newAnalyzerOptions() (*zetasql.AnalyzerOptions, error) {
 		zsqlcompat.FeatureV13Pivot,
 		zsqlcompat.FeatureV13Unpivot,
 		zsqlcompat.FeatureCreateTableAsSelectColumnList,
-	})
-	langOpt.SetSupportedStatementKinds([]ast.Kind{
-		ast.BeginStmtNode,
-		ast.CommitStmtNode,
-		ast.MergeStmtNode,
-		ast.QueryStmtNode,
-		ast.InsertStmtNode,
-		ast.UpdateStmtNode,
-		ast.DeleteStmtNode,
-		ast.DropStmtNode,
-		ast.TruncateStmtNode,
-		ast.CreateTableStmtNode,
-		ast.CreateTableAsSelectStmtNode,
-		ast.CreateProcedureStmtNode,
-		ast.CreateFunctionStmtNode,
-		ast.CreateTableFunctionStmtNode,
-		ast.CreateViewStmtNode,
-		ast.DropFunctionStmtNode,
-	})
+	} {
+		langOpt.EnableLanguageFeature(f)
+	}
+	langOpt.SetSupportedStatementKinds(zsqlcompat.SupportedStatementKinds())
 	// Enable QUALIFY without WHERE
 	// https://github.com/google/zetasql/issues/124
-	if err := langOpt.EnableReservableKeyword("QUALIFY", true); err != nil {
-		return nil, err
-	}
+	langOpt.EnableReservableKeyword("QUALIFY", true)
 	opt := zetasql.NewAnalyzerOptions()
-	opt.SetAllowUndeclaredParameters(true)
-	opt.SetLanguage(langOpt)
-	opt.SetParseLocationRecordType(zsqlcompat.ParseLocationRecordFullNodeScope)
+	opt.AllowUndeclaredParameters = true
+	opt.Language = langOpt
+	pl := zsqlcompat.ParseLocationRecordFullNodeScope
+	opt.ParseLocationRecordType = &pl
 	return opt, nil
 }
 
