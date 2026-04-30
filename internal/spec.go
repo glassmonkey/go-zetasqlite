@@ -69,7 +69,7 @@ func (s *FunctionSpec) SQL() string {
 	)
 }
 
-func (s *FunctionSpec) CallSQL(ctx context.Context, callNode *ast.BaseFunctionCallNode, argValues []string) (string, error) {
+func (s *FunctionSpec) CallSQL(ctx context.Context, callNode zsqlcompat.BaseFunctionCall, argValues []string) (string, error) {
 	args := callNode.ArgumentList()
 	var body string
 	if s.Body == "" {
@@ -423,12 +423,12 @@ func newTemplatedFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast
 	realStmt := realStmts[0]
 	realSignature := realStmt.Signature()
 	realArguments := realSignature.GetArgument()
-	resultType := newType(realSignature.GetReturnType().Type())
+	resultType := newType(realSignature.GetReturnType().GetType())
 	resultTypeName := resultType.FormatType()
 
 	allSameResultType := true
 	for _, stmt := range realStmts {
-		if newType(stmt.Signature().GetReturnType().Type()).FormatType() != resultTypeName {
+		if newType(stmt.Signature().GetReturnType().GetType()).FormatType() != resultTypeName {
 			allSameResultType = false
 			break
 		}
@@ -439,7 +439,7 @@ func newTemplatedFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast
 	} else {
 		retType = newTypeFromFunctionArgumentTypeByRealType(
 			signature.GetReturnType(),
-			realSignature.GetReturnType().Type(),
+			realSignature.GetReturnType().GetType(),
 		)
 	}
 	args := []*NameWithType{}
@@ -534,7 +534,7 @@ func newTableAsViewSpec(namePath *NamePath, query string, stmt *ast.CreateViewSt
 	var outputColumns []string
 	for _, column := range stmt.OutputColumnList() {
 		colName := column.Name()
-		refColumnName := *column.Column().Name
+		refColumnName := column.Column().GetName()
 		colID := column.Column().GetColumnId()
 		outputColumns = append(
 			outputColumns,
@@ -558,7 +558,7 @@ func newTableAsSelectSpec(namePath *NamePath, query string, stmt *ast.CreateTabl
 	var outputColumns []string
 	for _, column := range stmt.OutputColumnList() {
 		colName := column.Name()
-		refColumnName := *column.Column().Name
+		refColumnName := column.Column().GetName()
 		colID := column.Column().GetColumnId()
 		outputColumns = append(
 			outputColumns,

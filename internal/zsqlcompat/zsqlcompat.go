@@ -7,9 +7,22 @@
 package zsqlcompat
 
 import (
+	"github.com/glassmonkey/zetasql-wasm/resolved_ast"
 	"github.com/glassmonkey/zetasql-wasm/types"
 	"github.com/glassmonkey/zetasql-wasm/wasm/generated"
 )
+
+// BaseFunctionCall is the common surface that go-zetasql exposed via its
+// ResolvedBaseFunctionCall pseudo-base. zetasql-wasm flattens that out: each
+// of FunctionCallNode / AggregateFunctionCallNode / AnalyticFunctionCallNode
+// declares the same four methods directly. This interface lets fork code
+// continue to share helpers across all three.
+type BaseFunctionCall interface {
+	ArgumentList() []resolved_ast.ExprNode
+	Function() *generated.FunctionRefProto
+	Signature() *generated.FunctionSignatureProto
+	ErrorMode() generated.ResolvedFunctionCallBaseEnums_ErrorMode
+}
 
 // LanguageFeature is the language-feature flag type.
 type LanguageFeature = generated.LanguageFeature

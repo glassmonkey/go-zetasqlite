@@ -499,8 +499,8 @@ func (a *Analyzer) newQueryStmtAction(ctx context.Context, query string, args []
 	outputColumns := []*ColumnSpec{}
 	for _, col := range node.OutputColumnList() {
 		outputColumns = append(outputColumns, &ColumnSpec{
-			Name: col.Name(),
-			Type: newType(col.Column().Type()),
+			Name: col.GetName(),
+			Type: newType(col.Column().GetType()),
 		})
 	}
 	formattedQuery, err := newNode(node).FormatSQL(ctx)
@@ -535,7 +535,7 @@ func (a *Analyzer) newCommitStmtAction(ctx context.Context, query string, args [
 
 //nolint:unparam
 func (a *Analyzer) newTruncateStmtAction(_ context.Context, _ string, _ []driver.NamedValue, node *ast.TruncateStmtNode) (*TruncateStmtAction, error) {
-	table := node.TableScan().Table().Name()
+	table := node.TableScan().Table().GetName()
 	return &TruncateStmtAction{query: fmt.Sprintf("DELETE FROM `%s`", table)}, nil
 }
 
@@ -575,7 +575,7 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 		sourceColumn *ast.Column
 		targetColumn *ast.Column
 	)
-	if strings.Contains(sourceTable, colA.Column().TableName()) {
+	if strings.Contains(sourceTable, colA.Column().GetTableName()) {
 		sourceColumn = colA.Column()
 		targetColumn = colB.Column()
 	} else {
@@ -636,7 +636,7 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 		case zsqlcompat.ActionTypeInsert:
 			var columns []string
 			for _, col := range when.InsertColumnList() {
-				columns = append(columns, fmt.Sprintf("`%s`", col.Name()))
+				columns = append(columns, fmt.Sprintf("`%s`", col.GetName()))
 			}
 			row, err := newNode(when.InsertRow()).FormatSQL(unuseColumnID(ctx))
 			if err != nil {
