@@ -10,6 +10,7 @@ import (
 	parsed_ast "github.com/glassmonkey/zetasql-wasm/ast"
 	ast "github.com/glassmonkey/zetasql-wasm/resolved_ast"
 	"github.com/glassmonkey/zetasql-wasm/types"
+	"github.com/goccy/go-zetasqlite/internal/zsqlcompat"
 )
 
 type Analyzer struct {
@@ -34,48 +35,48 @@ func NewAnalyzer(catalog *Catalog) (*Analyzer, error) {
 
 func newAnalyzerOptions() (*zetasql.AnalyzerOptions, error) {
 	langOpt := zetasql.NewLanguageOptions()
-	langOpt.SetNameResolutionMode(zetasql.NameResolutionDefault)
-	langOpt.SetProductMode(types.ProductInternal)
-	langOpt.SetEnabledLanguageFeatures([]zetasql.LanguageFeature{
-		zetasql.FeatureAnalyticFunctions,
-		zetasql.FeatureNamedArguments,
-		zetasql.FeatureNumericType,
-		zetasql.FeatureBignumericType,
-		zetasql.FeatureV13DecimalAlias,
-		zetasql.FeatureCreateTableNotNull,
-		zetasql.FeatureParameterizedTypes,
-		zetasql.FeatureTablesample,
-		zetasql.FeatureTimestampNanos,
-		zetasql.FeatureV11HavingInAggregate,
-		zetasql.FeatureV11NullHandlingModifierInAggregate,
-		zetasql.FeatureV11NullHandlingModifierInAnalytic,
-		zetasql.FeatureV11OrderByCollate,
-		zetasql.FeatureV11SelectStarExceptReplace,
-		zetasql.FeatureV12SafeFunctionCall,
-		zetasql.FeatureJsonType,
-		zetasql.FeatureJsonArrayFunctions,
-		zetasql.FeatureJsonStrictNumberParsing,
-		zetasql.FeatureV13IsDistinct,
-		zetasql.FeatureV13FormatInCast,
-		zetasql.FeatureV13DateArithmetics,
-		zetasql.FeatureV11OrderByInAggregate,
-		zetasql.FeatureV11LimitInAggregate,
-		zetasql.FeatureV13DateTimeConstructors,
-		zetasql.FeatureV13ExtendedDateTimeSignatures,
-		zetasql.FeatureV12CivilTime,
-		zetasql.FeatureV12WeekWithWeekday,
-		zetasql.FeatureIntervalType,
-		zetasql.FeatureGroupByRollup,
-		zetasql.FeatureV13NullsFirstLastInOrderBy,
-		zetasql.FeatureV13Qualify,
-		zetasql.FeatureV13AllowDashesInTableName,
-		zetasql.FeatureGeography,
-		zetasql.FeatureV13ExtendedGeographyParsers,
-		zetasql.FeatureTemplateFunctions,
-		zetasql.FeatureV11WithOnSubquery,
-		zetasql.FeatureV13Pivot,
-		zetasql.FeatureV13Unpivot,
-		zetasql.FeatureCreateTableAsSelectColumnList,
+	langOpt.SetNameResolutionMode(zsqlcompat.NameResolutionDefault)
+	langOpt.SetProductMode(zsqlcompat.ProductInternal)
+	langOpt.SetEnabledLanguageFeatures([]zsqlcompat.LanguageFeature{
+		zsqlcompat.FeatureAnalyticFunctions,
+		zsqlcompat.FeatureNamedArguments,
+		zsqlcompat.FeatureNumericType,
+		zsqlcompat.FeatureBignumericType,
+		zsqlcompat.FeatureV13DecimalAlias,
+		zsqlcompat.FeatureCreateTableNotNull,
+		zsqlcompat.FeatureParameterizedTypes,
+		zsqlcompat.FeatureTablesample,
+		zsqlcompat.FeatureTimestampNanos,
+		zsqlcompat.FeatureV11HavingInAggregate,
+		zsqlcompat.FeatureV11NullHandlingModifierInAggregate,
+		zsqlcompat.FeatureV11NullHandlingModifierInAnalytic,
+		zsqlcompat.FeatureV11OrderByCollate,
+		zsqlcompat.FeatureV11SelectStarExceptReplace,
+		zsqlcompat.FeatureV12SafeFunctionCall,
+		zsqlcompat.FeatureJsonType,
+		zsqlcompat.FeatureJsonArrayFunctions,
+		zsqlcompat.FeatureJsonStrictNumberParsing,
+		zsqlcompat.FeatureV13IsDistinct,
+		zsqlcompat.FeatureV13FormatInCast,
+		zsqlcompat.FeatureV13DateArithmetics,
+		zsqlcompat.FeatureV11OrderByInAggregate,
+		zsqlcompat.FeatureV11LimitInAggregate,
+		zsqlcompat.FeatureV13DateTimeConstructors,
+		zsqlcompat.FeatureV13ExtendedDateTimeSignatures,
+		zsqlcompat.FeatureV12CivilTime,
+		zsqlcompat.FeatureV12WeekWithWeekday,
+		zsqlcompat.FeatureIntervalType,
+		zsqlcompat.FeatureGroupByRollup,
+		zsqlcompat.FeatureV13NullsFirstLastInOrderBy,
+		zsqlcompat.FeatureV13Qualify,
+		zsqlcompat.FeatureV13AllowDashesInTableName,
+		zsqlcompat.FeatureGeography,
+		zsqlcompat.FeatureV13ExtendedGeographyParsers,
+		zsqlcompat.FeatureTemplateFunctions,
+		zsqlcompat.FeatureV11WithOnSubquery,
+		zsqlcompat.FeatureV13Pivot,
+		zsqlcompat.FeatureV13Unpivot,
+		zsqlcompat.FeatureCreateTableAsSelectColumnList,
 	})
 	langOpt.SetSupportedStatementKinds([]ast.Kind{
 		ast.BeginStmtNode,
@@ -103,7 +104,7 @@ func newAnalyzerOptions() (*zetasql.AnalyzerOptions, error) {
 	opt := zetasql.NewAnalyzerOptions()
 	opt.SetAllowUndeclaredParameters(true)
 	opt.SetLanguage(langOpt)
-	opt.SetParseLocationRecordType(zetasql.ParseLocationRecordFullNodeScope)
+	opt.SetParseLocationRecordType(zsqlcompat.ParseLocationRecordFullNodeScope)
 	return opt, nil
 }
 
@@ -156,7 +157,7 @@ func (a *Analyzer) parseScript(query string) ([]parsed_ast.StatementNode, error)
 	return stmts, nil
 }
 
-func (a *Analyzer) getParameterMode(stmt parsed_ast.StatementNode) (zetasql.ParameterMode, error) {
+func (a *Analyzer) getParameterMode(stmt parsed_ast.StatementNode) (zsqlcompat.ParameterMode, error) {
 	var (
 		enabledNamedParameter      bool
 		enabledPositionalParameter bool
@@ -174,12 +175,12 @@ func (a *Analyzer) getParameterMode(stmt parsed_ast.StatementNode) (zetasql.Para
 		return nil
 	})
 	if enabledNamedParameter && enabledPositionalParameter {
-		return zetasql.ParameterNone, fmt.Errorf("named parameter and positional parameter cannot be used together")
+		return zsqlcompat.ParameterNone, fmt.Errorf("named parameter and positional parameter cannot be used together")
 	}
 	if enabledPositionalParameter {
-		return zetasql.ParameterPositional, nil
+		return zsqlcompat.ParameterPositional, nil
 	}
-	return zetasql.ParameterNamed, nil
+	return zsqlcompat.ParameterNamed, nil
 }
 
 type StmtActionFunc func() (StmtAction, error)
@@ -220,7 +221,7 @@ func (a *Analyzer) Analyze(ctx context.Context, conn *Conn, query string, args [
 			if err != nil {
 				return nil, err
 			}
-			if mode == zetasql.ParameterPositional {
+			if mode == zsqlcompat.ParameterPositional {
 				args = args[len(action.Args()):]
 			}
 			return action, nil
@@ -263,33 +264,33 @@ func (a *Analyzer) analyzeTemplatedFunctionWithRuntimeArgument(ctx context.Conte
 
 func (a *Analyzer) newStmtAction(ctx context.Context, query string, args []driver.NamedValue, node ast.StatementNode) (StmtAction, error) {
 	switch node.Kind() {
-	case ast.CreateTableStmtNode:
+	case ast.KindCreateTableStmt:
 		return a.newCreateTableStmtAction(ctx, query, args, node.(*ast.CreateTableStmtNode))
-	case ast.CreateTableAsSelectStmtNode:
+	case ast.KindCreateTableAsSelectStmt:
 		ctx = withUseColumnID(ctx)
 		return a.newCreateTableAsSelectStmtAction(ctx, query, args, node.(*ast.CreateTableAsSelectStmtNode))
-	case ast.CreateFunctionStmtNode:
+	case ast.KindCreateFunctionStmt:
 		return a.newCreateFunctionStmtAction(ctx, query, args, node.(*ast.CreateFunctionStmtNode))
-	case ast.CreateViewStmtNode:
+	case ast.KindCreateViewStmt:
 		ctx = withUseColumnID(ctx)
 		return a.newCreateViewStmtAction(ctx, query, args, node.(*ast.CreateViewStmtNode))
-	case ast.DropStmtNode:
+	case ast.KindDropStmt:
 		return a.newDropStmtAction(ctx, query, args, node.(*ast.DropStmtNode))
-	case ast.DropFunctionStmtNode:
+	case ast.KindDropFunctionStmt:
 		return a.newDropFunctionStmtAction(ctx, query, args, node.(*ast.DropFunctionStmtNode))
-	case ast.InsertStmtNode, ast.UpdateStmtNode, ast.DeleteStmtNode:
+	case ast.KindInsertStmt, ast.KindUpdateStmt, ast.KindDeleteStmt:
 		return a.newDMLStmtAction(ctx, query, args, node)
-	case ast.TruncateStmtNode:
+	case ast.KindTruncateStmt:
 		return a.newTruncateStmtAction(ctx, query, args, node.(*ast.TruncateStmtNode))
-	case ast.MergeStmtNode:
+	case ast.KindMergeStmt:
 		ctx = withUseColumnID(ctx)
 		return a.newMergeStmtAction(ctx, query, args, node.(*ast.MergeStmtNode))
-	case ast.QueryStmtNode:
+	case ast.KindQueryStmt:
 		ctx = withUseColumnID(ctx)
 		return a.newQueryStmtAction(ctx, query, args, node.(*ast.QueryStmtNode))
-	case ast.BeginStmtNode:
+	case ast.KindBeginStmt:
 		return a.newBeginStmtAction(ctx, query, args, node)
-	case ast.CommitStmtNode:
+	case ast.KindCommitStmt:
 		return a.newCommitStmtAction(ctx, query, args, node)
 	}
 	return nil, fmt.Errorf("unsupported stmt %s", node.DebugString())
@@ -628,11 +629,11 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 	for _, when := range node.WhenClauseList() {
 		var fromStmt string
 		switch when.MatchType() {
-		case ast.MatchTypeMatched:
+		case zsqlcompat.MatchTypeMatched:
 			fromStmt = matchedFromStmt
-		case ast.MatchTypeNotMatchedBySource:
+		case zsqlcompat.MatchTypeNotMatchedBySource:
 			fromStmt = notMatchedBySourceFromStmt
-		case ast.MatchTypeNotMatchedByTarget:
+		case zsqlcompat.MatchTypeNotMatchedByTarget:
 			fromStmt = notMatchedByTargetFromStmt
 		}
 		whereStmt := fmt.Sprintf(
@@ -641,7 +642,7 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 			fromStmt,
 		)
 		switch when.ActionType() {
-		case ast.ActionTypeInsert:
+		case zsqlcompat.ActionTypeInsert:
 			var columns []string
 			for _, col := range when.InsertColumnList() {
 				columns = append(columns, fmt.Sprintf("`%s`", col.Name()))
@@ -658,7 +659,7 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 				sourceColumn.TableName(),
 				whereStmt,
 			))
-		case ast.ActionTypeUpdate:
+		case zsqlcompat.ActionTypeUpdate:
 			var items []string
 			for _, item := range when.UpdateItemList() {
 				sql, err := newNode(item).FormatSQL(ctx)
@@ -673,7 +674,7 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 				strings.Join(items, ","),
 				fromStmt,
 			))
-		case ast.ActionTypeDelete:
+		case zsqlcompat.ActionTypeDelete:
 			stmts = append(stmts, fmt.Sprintf(
 				"DELETE FROM `%s` %s",
 				targetColumn.TableName(),

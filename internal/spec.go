@@ -7,9 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/goccy/go-json"
 	ast "github.com/glassmonkey/zetasql-wasm/resolved_ast"
 	"github.com/glassmonkey/zetasql-wasm/types"
+	"github.com/goccy/go-json"
+	"github.com/goccy/go-zetasqlite/internal/zsqlcompat"
 )
 
 type NameWithType struct {
@@ -18,17 +19,17 @@ type NameWithType struct {
 }
 
 func (t *NameWithType) FunctionArgumentType() (*types.FunctionArgumentType, error) {
-	if t.Type.SignatureKind != types.ArgTypeFixed {
+	if t.Type.SignatureKind != zsqlcompat.ArgTypeFixed {
 		return types.NewTemplatedFunctionArgumentType(
 			t.Type.SignatureKind,
-			types.NewFunctionArgumentTypeOptions(types.RequiredArgumentCardinality),
+			zsqlcompat.NewFunctionArgumentTypeOptions(zsqlcompat.RequiredArgumentCardinality),
 		), nil
 	}
 	typ, err := t.Type.ToZetaSQLType()
 	if err != nil {
 		return nil, err
 	}
-	opt := types.NewFunctionArgumentTypeOptions(types.RequiredArgumentCardinality)
+	opt := zsqlcompat.NewFunctionArgumentTypeOptions(zsqlcompat.RequiredArgumentCardinality)
 	opt.SetArgumentName(t.Name)
 	return types.NewFunctionArgumentType(typ, opt), nil
 }
@@ -103,15 +104,15 @@ func (s *FunctionSpec) CallSQL(ctx context.Context, callNode *ast.BaseFunctionCa
 }
 
 type TableSpec struct {
-	IsTemp     bool           `json:"isTemp"`
-	IsView     bool           `json:"isView"`
-	NamePath   []string       `json:"namePath"`
-	Columns    []*ColumnSpec  `json:"columns"`
-	PrimaryKey []string       `json:"primaryKey"`
-	CreateMode ast.CreateMode `json:"createMode"`
-	Query      string         `json:"query"`
-	UpdatedAt  time.Time      `json:"updatedAt"`
-	CreatedAt  time.Time      `json:"createdAt"`
+	IsTemp     bool                  `json:"isTemp"`
+	IsView     bool                  `json:"isView"`
+	NamePath   []string              `json:"namePath"`
+	Columns    []*ColumnSpec         `json:"columns"`
+	PrimaryKey []string              `json:"primaryKey"`
+	CreateMode zsqlcompat.CreateMode `json:"createMode"`
+	Query      string                `json:"query"`
+	UpdatedAt  time.Time             `json:"updatedAt"`
+	CreatedAt  time.Time             `json:"createdAt"`
 }
 
 func (s *TableSpec) Column(name string) *ColumnSpec {
@@ -146,11 +147,11 @@ func (s *TableSpec) SQLiteSchema() string {
 	}
 	var stmt string
 	switch s.CreateMode {
-	case ast.CreateDefaultMode:
+	case zsqlcompat.CreateDefaultMode:
 		stmt = "CREATE TABLE"
-	case ast.CreateOrReplaceMode:
+	case zsqlcompat.CreateOrReplaceMode:
 		stmt = "CREATE TABLE"
-	case ast.CreateIfNotExistsMode:
+	case zsqlcompat.CreateIfNotExistsMode:
 		stmt = "CREATE TABLE IF NOT EXISTS"
 	}
 	return fmt.Sprintf("%s `%s` (%s)", stmt, s.TableName(), strings.Join(columns, ","))
@@ -159,11 +160,11 @@ func (s *TableSpec) SQLiteSchema() string {
 func viewSQLiteSchema(s *TableSpec) string {
 	var stmt string
 	switch s.CreateMode {
-	case ast.CreateDefaultMode:
+	case zsqlcompat.CreateDefaultMode:
 		stmt = "CREATE VIEW"
-	case ast.CreateOrReplaceMode:
+	case zsqlcompat.CreateOrReplaceMode:
 		stmt = "CREATE VIEW"
-	case ast.CreateIfNotExistsMode:
+	case zsqlcompat.CreateIfNotExistsMode:
 		stmt = "CREATE VIEW IF NOT EXISTS"
 	}
 	return fmt.Sprintf("%s `%s` AS %s", stmt, s.TableName(), s.Query)
@@ -184,17 +185,17 @@ type Type struct {
 }
 
 func (t *Type) FunctionArgumentType() (*types.FunctionArgumentType, error) {
-	if t.SignatureKind != types.ArgTypeFixed {
+	if t.SignatureKind != zsqlcompat.ArgTypeFixed {
 		return types.NewTemplatedFunctionArgumentType(
 			t.SignatureKind,
-			types.NewFunctionArgumentTypeOptions(types.RequiredArgumentCardinality),
+			zsqlcompat.NewFunctionArgumentTypeOptions(zsqlcompat.RequiredArgumentCardinality),
 		), nil
 	}
 	typ, err := t.ToZetaSQLType()
 	if err != nil {
 		return nil, err
 	}
-	opt := types.NewFunctionArgumentTypeOptions(types.RequiredArgumentCardinality)
+	opt := zsqlcompat.NewFunctionArgumentTypeOptions(zsqlcompat.RequiredArgumentCardinality)
 	return types.NewFunctionArgumentType(typ, opt), nil
 }
 
@@ -391,7 +392,7 @@ func newFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast.CreateFu
 	}
 	now := time.Now()
 	return &FunctionSpec{
-		IsTemp:    stmt.CreateScope() == ast.CreateScopeTemp,
+		IsTemp:    stmt.CreateScope() == zsqlcompat.CreateScopeTemp,
 		NamePath:  namePath.mergePath(stmt.NamePath()),
 		Args:      args,
 		Return:    newType(stmt.ReturnType()),
@@ -406,9 +407,9 @@ func newFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast.CreateFu
 func newTypeFromFunctionArgumentTypeByRealType(t *types.FunctionArgumentType, realType types.Type) *Type {
 	if t.IsTemplated() {
 		if realType.IsArray() {
-			return &Type{SignatureKind: types.ArgArrayTypeAny1}
+			return &Type{SignatureKind: zsqlcompat.ArgArrayTypeAny1}
 		}
-		return &Type{SignatureKind: types.ArgTypeAny1}
+		return &Type{SignatureKind: zsqlcompat.ArgTypeAny1}
 	}
 	return newType(t.Type())
 }
@@ -459,7 +460,7 @@ func newTemplatedFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast
 	}
 	now := time.Now()
 	return &FunctionSpec{
-		IsTemp:    stmt.CreateScope() == ast.CreateScopeTemp,
+		IsTemp:    stmt.CreateScope() == zsqlcompat.CreateScopeTemp,
 		NamePath:  namePath.mergePath(stmt.NamePath()),
 		Args:      args,
 		Return:    retType,
@@ -516,7 +517,7 @@ func newPrimaryKey(key *ast.PrimaryKeyNode) []string {
 func newTableSpec(namePath *NamePath, stmt *ast.CreateTableStmtNode) *TableSpec {
 	now := time.Now()
 	return &TableSpec{
-		IsTemp:     stmt.CreateScope() == ast.CreateScopeTemp,
+		IsTemp:     stmt.CreateScope() == zsqlcompat.CreateScopeTemp,
 		NamePath:   namePath.mergePath(stmt.NamePath()),
 		Columns:    newColumnsFromDef(stmt.ColumnDefinitionList()),
 		PrimaryKey: newPrimaryKey(stmt.PrimaryKey()),
@@ -539,7 +540,7 @@ func newTableAsViewSpec(namePath *NamePath, query string, stmt *ast.CreateViewSt
 	}
 	now := time.Now()
 	return &TableSpec{
-		IsTemp:     stmt.CreateScope() == ast.CreateScopeTemp,
+		IsTemp:     stmt.CreateScope() == zsqlcompat.CreateScopeTemp,
 		IsView:     true,
 		NamePath:   namePath.mergePath(stmt.NamePath()),
 		Columns:    newColumnsFromOutputColumns(stmt.OutputColumnList()),
@@ -563,7 +564,7 @@ func newTableAsSelectSpec(namePath *NamePath, query string, stmt *ast.CreateTabl
 	}
 	now := time.Now()
 	return &TableSpec{
-		IsTemp:     stmt.CreateScope() == ast.CreateScopeTemp,
+		IsTemp:     stmt.CreateScope() == zsqlcompat.CreateScopeTemp,
 		NamePath:   namePath.mergePath(stmt.NamePath()),
 		Columns:    newColumnsFromDef(stmt.ColumnDefinitionList()),
 		PrimaryKey: newPrimaryKey(stmt.PrimaryKey()),
@@ -592,7 +593,7 @@ func newType(t types.Type) *Type {
 		}
 	}
 	return &Type{
-		Name:        t.TypeName(types.ProductInternal),
+		Name:        t.TypeName(zsqlcompat.ProductInternal),
 		Kind:        int(kind),
 		ElementType: elem,
 		FieldTypes:  fieldTypes,

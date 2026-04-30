@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/goccy/go-json"
-	ast "github.com/glassmonkey/zetasql-wasm/resolved_ast"
+	"github.com/goccy/go-zetasqlite/internal/zsqlcompat"
 )
 
 type WindowFuncOptionType string
@@ -102,34 +102,34 @@ type WindowBoundary struct {
 	Offset int64              `json:"offset"`
 }
 
-func getWindowFrameUnitOptionFuncSQL(frameUnit ast.FrameUnit) string {
+func getWindowFrameUnitOptionFuncSQL(frameUnit zsqlcompat.FrameUnit) string {
 	var typ WindowFrameUnitType
 	switch frameUnit {
-	case ast.FrameUnitRows:
+	case zsqlcompat.FrameUnitRows:
 		typ = WindowFrameUnitRows
-	case ast.FrameUnitRange:
+	case zsqlcompat.FrameUnitRange:
 		typ = WindowFrameUnitRange
 	}
 	return fmt.Sprintf("zetasqlite_window_frame_unit(%d)", typ)
 }
 
-func toWindowBoundaryType(boundaryType ast.BoundaryType) WindowBoundaryType {
+func toWindowBoundaryType(boundaryType zsqlcompat.BoundaryType) WindowBoundaryType {
 	switch boundaryType {
-	case ast.UnboundedPrecedingType:
+	case zsqlcompat.UnboundedPrecedingType:
 		return WindowUnboundedPrecedingType
-	case ast.OffsetPrecedingType:
+	case zsqlcompat.OffsetPrecedingType:
 		return WindowOffsetPrecedingType
-	case ast.CurrentRowType:
+	case zsqlcompat.CurrentRowType:
 		return WindowCurrentRowType
-	case ast.OffsetFollowingType:
+	case zsqlcompat.OffsetFollowingType:
 		return WindowOffsetFollowingType
-	case ast.UnboundedFollowingType:
+	case zsqlcompat.UnboundedFollowingType:
 		return WindowUnboundedFollowingType
 	}
 	return WindowBoundaryTypeUnknown
 }
 
-func getWindowBoundaryStartOptionFuncSQL(boundaryType ast.BoundaryType, offset string) string {
+func getWindowBoundaryStartOptionFuncSQL(boundaryType zsqlcompat.BoundaryType, offset string) string {
 	typ := toWindowBoundaryType(boundaryType)
 	if offset == "" {
 		offset = "0"
@@ -137,7 +137,7 @@ func getWindowBoundaryStartOptionFuncSQL(boundaryType ast.BoundaryType, offset s
 	return fmt.Sprintf("zetasqlite_window_boundary_start(%d, %s)", typ, offset)
 }
 
-func getWindowBoundaryEndOptionFuncSQL(boundaryType ast.BoundaryType, offset string) string {
+func getWindowBoundaryEndOptionFuncSQL(boundaryType zsqlcompat.BoundaryType, offset string) string {
 	typ := toWindowBoundaryType(boundaryType)
 	if offset == "" {
 		offset = "0"

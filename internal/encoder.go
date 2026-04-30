@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/goccy/go-json"
 	ast "github.com/glassmonkey/zetasql-wasm/resolved_ast"
 	"github.com/glassmonkey/zetasql-wasm/types"
+	"github.com/goccy/go-json"
 )
 
 func EncodeNamedValues(v []driver.NamedValue, params []*ast.ParameterNode) ([]sql.NamedArg, error) {
