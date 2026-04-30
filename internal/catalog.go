@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -71,6 +70,18 @@ func newSimpleCatalog(name string) *types.SimpleCatalog {
 	return catalog
 }
 
+// findSubCatalog returns the sub-catalog of cat whose name matches (case-
+// insensitive), or nil if none is registered. zetasql-wasm's SimpleCatalog
+// only exposes a Tables/Functions/SubCatalogs slice, so we iterate.
+func findSubCatalog(cat *types.SimpleCatalog, name string) *types.SimpleCatalog {
+	for _, sub := range cat.SubCatalogs {
+		if strings.EqualFold(sub.Name, name) {
+			return sub
+		}
+	}
+	return nil
+}
+
 func NewCatalog(db *sql.DB) *Catalog {
 	return &Catalog{
 		db:       db,
@@ -80,11 +91,9 @@ func NewCatalog(db *sql.DB) *Catalog {
 	}
 }
 
-func (c *Catalog) FullName() string {
-	return c.catalog.FullName()
-}
-
-func (c *Catalog) FindTable(path []string) (types.Table, error) {
+// FindTable looks up a table that has been previously registered with this
+// catalog. Wildcard table names are intercepted and synthesized on demand.
+func (c *Catalog) FindTable(path []string) (*types.SimpleTable, error) {
 	if c.isWildcardTable(path) {
 		return c.createWildcardTable(path)
 	}
@@ -107,60 +116,9 @@ func (c *Catalog) normalizeTablePath(path []string) []string {
 	return result
 }
 
-func (c *Catalog) FindModel(path []string) (types.Model, error) {
-	return c.catalog.FindModel(path)
-}
-
-func (c *Catalog) FindConnection(path []string) (types.Connection, error) {
-	return c.catalog.FindConnection(path)
-}
-
+// FindFunction looks up a function previously registered with this catalog.
 func (c *Catalog) FindFunction(path []string) (*types.Function, error) {
 	return c.catalog.FindFunction(path)
-}
-
-func (c *Catalog) FindTableValuedFunction(path []string) (types.TableValuedFunction, error) {
-	return c.catalog.FindTableValuedFunction(path)
-}
-
-func (c *Catalog) FindProcedure(path []string) (*types.Procedure, error) {
-	return c.catalog.FindProcedure(path)
-}
-
-func (c *Catalog) FindType(path []string) (types.Type, error) {
-	return c.catalog.FindType(path)
-}
-
-func (c *Catalog) FindConstant(path []string) (types.Constant, int, error) {
-	return c.catalog.FindConstant(path)
-}
-
-func (c *Catalog) FindConversion(from, to types.Type) (types.Conversion, error) {
-	return c.catalog.FindConversion(from, to)
-}
-
-func (c *Catalog) ExtendedTypeSuperTypes(typ types.Type) (*types.TypeListView, error) {
-	return c.catalog.ExtendedTypeSuperTypes(typ)
-}
-
-func (c *Catalog) SuggestTable(mistypedPath []string) string {
-	return c.catalog.SuggestTable(mistypedPath)
-}
-
-func (c *Catalog) SuggestModel(mistypedPath []string) string {
-	return c.catalog.SuggestModel(mistypedPath)
-}
-
-func (c *Catalog) SuggestFunction(mistypedPath []string) string {
-	return c.catalog.SuggestFunction(mistypedPath)
-}
-
-func (c *Catalog) SuggestTableValuedFunction(mistypedPath []string) string {
-	return c.catalog.SuggestTableValuedFunction(mistypedPath)
-}
-
-func (c *Catalog) SuggestConstant(mistypedPath []string) string {
-	return c.catalog.SuggestConstant(mistypedPath)
 }
 
 func (c *Catalog) formatNamePath(path []string) string {
@@ -457,10 +415,10 @@ func (c *Catalog) addTableSpec(spec *TableSpec) error {
 func (c *Catalog) addTableSpecRecursive(cat *types.SimpleCatalog, spec *TableSpec) error {
 	if len(spec.NamePath) > 1 {
 		subCatalogName := spec.NamePath[0]
-		subCatalog, _ := cat.Catalog(subCatalogName)
+		subCatalog := findSubCatalog(cat, subCatalogName)
 		if subCatalog == nil {
 			subCatalog = newSimpleCatalog(subCatalogName)
-			cat.AddCatalog(subCatalog)
+			cat.SubCatalogs = append(cat.SubCatalogs, subCatalog)
 		}
 		fullTableName := strings.Join(spec.NamePath, ".")
 		if !c.existsTable(cat, fullTableName) {
@@ -468,7 +426,7 @@ func (c *Catalog) addTableSpecRecursive(cat *types.SimpleCatalog, spec *TableSpe
 			if err != nil {
 				return err
 			}
-			cat.AddTable(table)
+			cat.Tables = append(cat.Tables, table)
 		}
 		newNamePath := spec.NamePath[1:]
 		// add sub catalog to root catalog
@@ -493,12 +451,12 @@ func (c *Catalog) addTableSpecRecursive(cat *types.SimpleCatalog, spec *TableSpe
 	if err != nil {
 		return err
 	}
-	cat.AddTable(table)
+	cat.Tables = append(cat.Tables, table)
 	return nil
 }
 
 func (c *Catalog) createSimpleTable(tableName string, spec *TableSpec) (*types.SimpleTable, error) {
-	columns := []types.Column{}
+	columns := []*types.SimpleColumn{}
 	for _, column := range spec.Columns {
 		typ, err := column.Type.ToZetaSQLType()
 		if err != nil {
@@ -508,16 +466,16 @@ func (c *Catalog) createSimpleTable(tableName string, spec *TableSpec) (*types.S
 			tableName, column.Name, typ,
 		))
 	}
-	return types.NewSimpleTable(tableName, columns), nil
+	return types.NewSimpleTable(tableName, columns...), nil
 }
 
 func (c *Catalog) addFunctionSpecRecursive(cat *types.SimpleCatalog, spec *FunctionSpec) error {
 	if len(spec.NamePath) > 1 {
 		subCatalogName := spec.NamePath[0]
-		subCatalog, _ := cat.Catalog(subCatalogName)
+		subCatalog := findSubCatalog(cat, subCatalogName)
 		if subCatalog == nil {
 			subCatalog = newSimpleCatalog(subCatalogName)
-			cat.AddCatalog(subCatalog)
+			cat.SubCatalogs = append(cat.SubCatalogs, subCatalog)
 		}
 		newNamePath := spec.NamePath[1:]
 		// add sub catalog to root catalog
@@ -552,7 +510,7 @@ func (c *Catalog) addFunctionSpecRecursive(cat *types.SimpleCatalog, spec *Funct
 	}
 	sig := types.NewFunctionSignature(retType, argTypes)
 	newFunc := types.NewFunction([]string{funcName}, "", types.ScalarMode, []*types.FunctionSignature{sig})
-	cat.AddFunction(newFunc)
+	cat.Functions = append(cat.Functions, newFunc)
 	return nil
 }
 
@@ -566,12 +524,8 @@ func (c *Catalog) existsFunction(cat *types.SimpleCatalog, name string) bool {
 	return foundFunc != nil
 }
 
-func (c *Catalog) isNilTable(t types.Table) bool {
-	v := reflect.ValueOf(t)
-	if !v.IsValid() {
-		return true
-	}
-	return v.IsNil()
+func (c *Catalog) isNilTable(t *types.SimpleTable) bool {
+	return t == nil
 }
 
 func (c *Catalog) copyTableSpec(spec *TableSpec, newNamePath []string) *TableSpec {
