@@ -341,7 +341,7 @@ func newTypeFromFunctionArgumentType(t *types.FunctionArgumentType) *Type {
 func newFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast.CreateFunctionStmtNode) (*FunctionSpec, error) {
 	args := []*NameWithType{}
 	signature := stmt.Signature()
-	for _, arg := range signature.Arguments() {
+	for _, arg := range signature.GetArgument() {
 		args = append(args, &NameWithType{
 			Name: arg.ArgumentName(),
 			Type: newTypeFromFunctionArgumentType(arg),
@@ -419,16 +419,16 @@ func newTypeFromFunctionArgumentTypeByRealType(t *types.FunctionArgumentType, re
 
 func newTemplatedFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast.CreateFunctionStmtNode, realStmts []*ast.CreateFunctionStmtNode) (*FunctionSpec, error) {
 	signature := stmt.Signature()
-	arguments := signature.Arguments()
+	arguments := signature.GetArgument()
 	realStmt := realStmts[0]
 	realSignature := realStmt.Signature()
-	realArguments := realSignature.Arguments()
-	resultType := newType(realSignature.ResultType().Type())
+	realArguments := realSignature.GetArgument()
+	resultType := newType(realSignature.GetReturnType().Type())
 	resultTypeName := resultType.FormatType()
 
 	allSameResultType := true
 	for _, stmt := range realStmts {
-		if newType(stmt.Signature().ResultType().Type()).FormatType() != resultTypeName {
+		if newType(stmt.Signature().GetReturnType().Type()).FormatType() != resultTypeName {
 			allSameResultType = false
 			break
 		}
@@ -438,8 +438,8 @@ func newTemplatedFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast
 		retType = resultType
 	} else {
 		retType = newTypeFromFunctionArgumentTypeByRealType(
-			signature.ResultType(),
-			realSignature.ResultType().Type(),
+			signature.GetReturnType(),
+			realSignature.GetReturnType().Type(),
 		)
 	}
 	args := []*NameWithType{}
@@ -534,8 +534,8 @@ func newTableAsViewSpec(namePath *NamePath, query string, stmt *ast.CreateViewSt
 	var outputColumns []string
 	for _, column := range stmt.OutputColumnList() {
 		colName := column.Name()
-		refColumnName := column.Column().Name()
-		colID := column.Column().ColumnID()
+		refColumnName := *column.Column().Name
+		colID := column.Column().GetColumnId()
 		outputColumns = append(
 			outputColumns,
 			fmt.Sprintf("`%s#%d` AS `%s`", refColumnName, colID, colName),
@@ -558,8 +558,8 @@ func newTableAsSelectSpec(namePath *NamePath, query string, stmt *ast.CreateTabl
 	var outputColumns []string
 	for _, column := range stmt.OutputColumnList() {
 		colName := column.Name()
-		refColumnName := column.Column().Name()
-		colID := column.Column().ColumnID()
+		refColumnName := *column.Column().Name
+		colID := column.Column().GetColumnId()
 		outputColumns = append(
 			outputColumns,
 			fmt.Sprintf("`%s#%d` AS `%s`", refColumnName, colID, colName),
@@ -588,7 +588,7 @@ func newType(t types.Type) *Type {
 	case types.Array:
 		elem = newType(t.AsArray().ElementType)
 	case types.Struct:
-		for _, field := range t.AsStruct().Fields() {
+		for _, field := range t.AsStruct().Fields {
 			fieldTypes = append(fieldTypes, &NameWithType{
 				Name: field.Name(),
 				Type: newType(field.Type()),

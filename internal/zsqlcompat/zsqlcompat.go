@@ -153,6 +153,37 @@ func KindString(k types.TypeKind) string {
 	return generated.TypeKind(k).String()
 }
 
+// TypeFromProto reconstructs a zetasql-wasm types.Type from its proto
+// representation, walking ArrayType / StructType recursively. Returns nil
+// for an unrecognised TypeKind. Used at the seam where a resolved AST
+// node hands us a *generated.TypeProto (e.g. an argument or column type)
+// but downstream code wants the typed Go interface.
+func TypeFromProto(p *generated.TypeProto) (types.Type, error) {
+	if p == nil {
+		return nil, nil
+	}
+	k := types.TypeKind(p.GetTypeKind())
+	switch k {
+	case types.Array:
+		elem, err := TypeFromProto(p.GetArrayType().GetElementType())
+		if err != nil {
+			return nil, err
+		}
+		return types.NewArrayType(elem)
+	case types.Struct:
+		fields := make([]*types.StructField, 0, len(p.GetStructType().GetField()))
+		for _, f := range p.GetStructType().GetField() {
+			ft, err := TypeFromProto(f.GetFieldType())
+			if err != nil {
+				return nil, err
+			}
+			fields = append(fields, &types.StructField{Name: f.GetFieldName(), Type: ft})
+		}
+		return types.NewStructType(fields)
+	}
+	return TypeFromKind(k), nil
+}
+
 // SupportedStatementKinds returns the resolved-node statement kinds that
 // go-zetasqlite asks the analyzer to accept.
 func SupportedStatementKinds() []generated.ResolvedNodeKind {

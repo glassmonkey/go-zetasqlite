@@ -10,6 +10,7 @@ import (
 	parsed_ast "github.com/glassmonkey/zetasql-wasm/ast"
 	ast "github.com/glassmonkey/zetasql-wasm/resolved_ast"
 	"github.com/glassmonkey/zetasql-wasm/types"
+	"github.com/glassmonkey/zetasql-wasm/wasm/generated"
 	"github.com/goccy/go-zetasqlite/internal/zsqlcompat"
 )
 
@@ -393,12 +394,15 @@ func (a *Analyzer) inferTemplatedTypeByRealType(query string, node *ast.CreateFu
 func (a *Analyzer) buildScalarTypeFuncFromTemplatedFunc(node *ast.CreateFunctionStmtNode, realType string) string {
 	signature := node.Signature()
 	var args []string
-	for _, arg := range signature.Arguments() {
+	for _, arg := range signature.GetArgument() {
 		typ := realType
-		if !arg.IsTemplated() {
-			typ = newType(arg.Type()).FormatType()
+		if arg.GetKind() == generated.SignatureArgumentKind_ARG_TYPE_FIXED {
+			argTyp, err := zsqlcompat.TypeFromProto(arg.GetType())
+			if err == nil && argTyp != nil {
+				typ = newType(argTyp).FormatType()
+			}
 		}
-		args = append(args, fmt.Sprintf("%s %s", arg.ArgumentName(), typ))
+		args = append(args, fmt.Sprintf("%s %s", arg.GetOptions().GetArgumentName(), typ))
 	}
 	return fmt.Sprintf(
 		"CREATE TEMP FUNCTION __zetasqlite_func__(%s) as (%s)",
@@ -410,12 +414,15 @@ func (a *Analyzer) buildScalarTypeFuncFromTemplatedFunc(node *ast.CreateFunction
 func (a *Analyzer) buildArrayTypeFuncFromTemplatedFunc(node *ast.CreateFunctionStmtNode, realType string) string {
 	signature := node.Signature()
 	var args []string
-	for _, arg := range signature.Arguments() {
+	for _, arg := range signature.GetArgument() {
 		typ := fmt.Sprintf("ARRAY<%s>", realType)
-		if !arg.IsTemplated() {
-			typ = newType(arg.Type()).FormatType()
+		if arg.GetKind() == generated.SignatureArgumentKind_ARG_TYPE_FIXED {
+			argTyp, err := zsqlcompat.TypeFromProto(arg.GetType())
+			if err == nil && argTyp != nil {
+				typ = newType(argTyp).FormatType()
+			}
 		}
-		args = append(args, fmt.Sprintf("%s %s", arg.ArgumentName(), typ))
+		args = append(args, fmt.Sprintf("%s %s", arg.GetOptions().GetArgumentName(), typ))
 	}
 	return fmt.Sprintf(
 		"CREATE TEMP FUNCTION __zetasqlite_func__(%s) as (%s)",
