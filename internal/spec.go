@@ -20,18 +20,21 @@ type NameWithType struct {
 
 func (t *NameWithType) FunctionArgumentType() (*types.FunctionArgumentType, error) {
 	if t.Type.SignatureKind != zsqlcompat.ArgTypeFixed {
-		return types.NewTemplatedFunctionArgumentType(
-			t.Type.SignatureKind,
-			zsqlcompat.NewFunctionArgumentTypeOptions(zsqlcompat.RequiredArgumentCardinality),
-		), nil
+		arg := types.NewTemplatedFunctionArgumentType(t.Type.SignatureKind)
+		arg.Options = zsqlcompat.NewFunctionArgumentTypeOptions(zsqlcompat.RequiredArgumentCardinality)
+		return arg, nil
 	}
 	typ, err := t.Type.ToZetaSQLType()
 	if err != nil {
 		return nil, err
 	}
-	opt := zsqlcompat.NewFunctionArgumentTypeOptions(zsqlcompat.RequiredArgumentCardinality)
-	opt.SetArgumentName(t.Name)
-	return types.NewFunctionArgumentType(typ, opt), nil
+	arg := types.NewFunctionArgumentType(typ)
+	arg.Options = zsqlcompat.NewFunctionArgumentTypeOptions(zsqlcompat.RequiredArgumentCardinality)
+	// TODO(zetasql-wasm-migration): argument name (t.Name) is not currently
+	// propagated; FunctionArgumentTypeOptions in zetasql-wasm only exposes
+	// Cardinality. Add an ArgumentName field upstream when needed.
+	_ = t.Name
+	return arg, nil
 }
 
 type FunctionSpec struct {
@@ -178,7 +181,7 @@ type ColumnSpec struct {
 
 type Type struct {
 	Name          string                      `json:"name"`
-	Kind          int                         `json:"kind"`
+	Kind          types.TypeKind              `json:"kind"`
 	SignatureKind types.SignatureArgumentKind `json:"signatureKind"`
 	ElementType   *Type                       `json:"elementType"`
 	FieldTypes    []*NameWithType             `json:"fieldTypes"`
@@ -186,17 +189,17 @@ type Type struct {
 
 func (t *Type) FunctionArgumentType() (*types.FunctionArgumentType, error) {
 	if t.SignatureKind != zsqlcompat.ArgTypeFixed {
-		return types.NewTemplatedFunctionArgumentType(
-			t.SignatureKind,
-			zsqlcompat.NewFunctionArgumentTypeOptions(zsqlcompat.RequiredArgumentCardinality),
-		), nil
+		arg := types.NewTemplatedFunctionArgumentType(t.SignatureKind)
+		arg.Options = zsqlcompat.NewFunctionArgumentTypeOptions(zsqlcompat.RequiredArgumentCardinality)
+		return arg, nil
 	}
 	typ, err := t.ToZetaSQLType()
 	if err != nil {
 		return nil, err
 	}
-	opt := zsqlcompat.NewFunctionArgumentTypeOptions(zsqlcompat.RequiredArgumentCardinality)
-	return types.NewFunctionArgumentType(typ, opt), nil
+	arg := types.NewFunctionArgumentType(typ)
+	arg.Options = zsqlcompat.NewFunctionArgumentTypeOptions(zsqlcompat.RequiredArgumentCardinality)
+	return arg, nil
 }
 
 func (t *Type) IsArray() bool {
@@ -210,7 +213,7 @@ func (t *Type) IsStruct() bool {
 func (t *Type) AvailableAutoIndex() bool {
 	switch t.Kind {
 	case types.Bytes, types.Json, types.Array, types.Struct,
-		types.Geography, types.PROTO, types.EXTENDED:
+		types.Geography, types.Proto, types.Extended:
 		return false
 	}
 	return true
@@ -258,7 +261,7 @@ func (t *Type) ToZetaSQLType() (types.Type, error) {
 		}
 		return types.NewStructType(fields)
 	}
-	return types.TypeFromKind(types.TypeKind(t.Kind)), nil
+	return zsqlcompat.TypeFromKind(t.Kind), nil
 }
 
 func (t *Type) FormatType() string {
@@ -272,15 +275,15 @@ func (t *Type) FormatType() string {
 	case types.Array:
 		return fmt.Sprintf("ARRAY<%s>", t.ElementType.FormatType())
 	}
-	return types.TypeKind(t.Kind).String()
+	return zsqlcompat.KindString(t.Kind)
 }
 
 func (s *ColumnSpec) SQLiteSchema() string {
 	var typ string
-	switch types.TypeKind(s.Type.Kind) {
+	switch s.Type.Kind {
 	case types.Int32, types.Int64, types.Uint32, types.Uint64:
 		typ = "INT"
-	case types.ENUM:
+	case types.Enum:
 		typ = "INT"
 	case types.Bool:
 		typ = "BOOLEAN"
@@ -302,7 +305,7 @@ func (s *ColumnSpec) SQLiteSchema() string {
 		typ = "TEXT"
 	case types.Struct:
 		typ = "TEXT"
-	case types.PROTO:
+	case types.Proto:
 		typ = "TEXT"
 	case types.Time:
 		typ = "TEXT"
@@ -314,7 +317,7 @@ func (s *ColumnSpec) SQLiteSchema() string {
 		typ = "TEXT"
 	case types.BigNumeric:
 		typ = "TEXT"
-	case types.EXTENDED:
+	case types.Extended:
 		typ = "TEXT"
 	case types.Interval:
 		typ = "TEXT"
@@ -329,10 +332,10 @@ func (s *ColumnSpec) SQLiteSchema() string {
 }
 
 func newTypeFromFunctionArgumentType(t *types.FunctionArgumentType) *Type {
-	if t.IsTemplated() {
-		return &Type{SignatureKind: t.Kind()}
+	if t.Kind != zsqlcompat.ArgTypeFixed {
+		return &Type{SignatureKind: t.Kind}
 	}
-	return newType(t.Type())
+	return newType(t.Type)
 }
 
 func newFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast.CreateFunctionStmtNode) (*FunctionSpec, error) {

@@ -101,6 +101,58 @@ func NewFunctionArgumentTypeOptions(c generated.FunctionEnums_ArgumentCardinalit
 	return &types.FunctionArgumentTypeOptions{Cardinality: c}
 }
 
+// TypeFromKind returns the singleton zetasql-wasm Type for a scalar kind.
+// Composite kinds (Array, Struct) return nil since they require element /
+// field information that this kind alone cannot supply.
+func TypeFromKind(k types.TypeKind) types.Type {
+	switch k {
+	case types.Int32:
+		return types.Int32Type()
+	case types.Int64:
+		return types.Int64Type()
+	case types.Uint32:
+		return types.Uint32Type()
+	case types.Uint64:
+		return types.Uint64Type()
+	case types.Bool:
+		return types.BoolType()
+	case types.Float:
+		return types.FloatType()
+	case types.Double:
+		return types.DoubleType()
+	case types.String:
+		return types.StringType()
+	case types.Bytes:
+		return types.BytesType()
+	case types.Date:
+		return types.DateType()
+	case types.Timestamp:
+		return types.TimestampType()
+	case types.Time:
+		return types.TimeType()
+	case types.Datetime:
+		return types.DatetimeType()
+	case types.Geography:
+		return types.GeographyType()
+	case types.Numeric:
+		return types.NumericType()
+	case types.BigNumeric:
+		return types.BigNumericType()
+	case types.Json:
+		return types.JsonType()
+	case types.Interval:
+		return types.IntervalType()
+	}
+	return nil
+}
+
+// KindString returns the canonical proto name for a TypeKind (e.g. "TYPE_INT64").
+// zetasql-wasm's TypeKind itself doesn't have a String method, but the
+// underlying generated.TypeKind does.
+func KindString(k types.TypeKind) string {
+	return generated.TypeKind(k).String()
+}
+
 // === Resolved AST aliases ===
 
 // JoinType.
