@@ -65,16 +65,16 @@ func getPathFromNode(n parsed_ast.Node) ([]string, error) {
 	var path []string
 	switch node := n.(type) {
 	case *parsed_ast.IdentifierNode:
-		path = append(path, node.Name())
+		path = append(path, node.IdString())
 	case *parsed_ast.PathExpressionNode:
 		for _, name := range node.Names() {
-			path = append(path, name.Name())
+			path = append(path, name.IdString())
 		}
 	case *parsed_ast.TablePathExpressionNode:
 		switch {
 		case node.PathExpr() != nil:
 			for _, name := range node.PathExpr().Names() {
-				path = append(path, name.Name())
+				path = append(path, name.IdString())
 			}
 		}
 	default:
@@ -472,11 +472,11 @@ func (n *MakeStructNode) FormatSQL(ctx context.Context) (string, error) {
 		return "", nil
 	}
 	typ := n.node.Type().AsStruct()
-	fieldNum := typ.NumFields()
+	fieldNum := len(typ.Fields)
 	fields := n.node.FieldList()
 	args := make([]string, 0, fieldNum*2)
 	for i := 0; i < fieldNum; i++ {
-		fieldName := typ.Field(i).Name()
+		fieldName := typ.Fields[i].Name
 		key, err := LiteralFromValue(StringValue(fieldName))
 		if err != nil {
 			return "", err
