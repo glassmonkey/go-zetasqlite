@@ -89,7 +89,7 @@ func (t *WildcardTable) NumColumns() int {
 	return len(t.spec.Columns)
 }
 
-func (t *WildcardTable) Column(idx int) types.Column {
+func (t *WildcardTable) Column(idx int) *types.SimpleColumn {
 	column := t.spec.Columns[idx]
 	typ, err := column.Type.ToZetaSQLType()
 	if err != nil {
@@ -104,7 +104,7 @@ func (t *WildcardTable) PrimaryKey() []int {
 	return nil
 }
 
-func (t *WildcardTable) FindColumnByName(name string) types.Column {
+func (t *WildcardTable) FindColumnByName(name string) *types.SimpleColumn {
 	for _, col := range t.spec.Columns {
 		if col.Name == name {
 			typ, err := col.Type.ToZetaSQLType()
@@ -127,13 +127,10 @@ func (t *WildcardTable) SerializationID() int64 {
 	return 0
 }
 
-func (t *WildcardTable) CreateEvaluatorTableIterator(columnIdxs []int) (*types.EvaluatorTableIterator, error) {
-	return nil, nil
-}
-
-func (t *WildcardTable) AnonymizationInfo() *types.AnonymizationInfo {
-	return nil
-}
+// TODO(zetasql-wasm-migration): EvaluatorTableIterator and AnonymizationInfo
+// are go-zetasql evaluator-engine concepts not exposed by zetasql-wasm.
+// Re-introduce when the fork's evaluator layer is rewritten on top of
+// SimpleCatalog.
 
 func (t *WildcardTable) SupportsAnonymization() bool {
 	return false
@@ -143,7 +140,16 @@ func (t *WildcardTable) TableTypeName(mode zsqlcompat.ProductMode) string {
 	return ""
 }
 
-func (c *Catalog) createWildcardTable(path []string) (types.Table, error) {
+// createWildcardTable used to return a fork-internal WildcardTable that
+// implemented go-zetasql's Table interface. zetasql-wasm has no such
+// interface and FindTable returns *types.SimpleTable; the wildcard
+// SimpleTable is built directly here. Code that previously type-asserted
+// FindTable's return to *WildcardTable must instead consult the catalog's
+// wildcard registry separately.
+//
+// TODO(zetasql-wasm-migration): wildcard-table dispatch in formatter.go
+// (the type-assert path) is currently bypassed; see commit message.
+func (c *Catalog) createWildcardTable(path []string) (*types.SimpleTable, error) {
 	name := strings.Join(path, "_")
 	name = strings.TrimRight(name, "*")
 	re, err := regexp.Compile(name)
@@ -183,10 +189,17 @@ func (c *Catalog) createWildcardTable(path []string) (types.Table, error) {
 	if !strings.HasPrefix(prefix, firstIdentifier+".") {
 		prefix = firstIdentifier + "." + prefix
 	}
+	_ = matchedSpecs
+	_ = prefix
 
-	return &WildcardTable{
+	wt := &WildcardTable{
 		spec:   wildcardTable,
 		tables: matchedSpecs,
 		prefix: prefix,
-	}, nil
+	}
+	columns := []*types.SimpleColumn{}
+	for i := 0; i < wt.NumColumns(); i++ {
+		columns = append(columns, wt.Column(i))
+	}
+	return types.NewSimpleTable(wt.FullName(), columns...), nil
 }

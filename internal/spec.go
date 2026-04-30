@@ -586,7 +586,7 @@ func newType(t types.Type) *Type {
 	)
 	switch kind {
 	case types.Array:
-		elem = newType(t.AsArray().ElementType())
+		elem = newType(t.AsArray().ElementType)
 	case types.Struct:
 		for _, field := range t.AsStruct().Fields() {
 			fieldTypes = append(fieldTypes, &NameWithType{

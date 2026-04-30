@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/glassmonkey/zetasql-wasm"
-	ast "github.com/glassmonkey/zetasql-wasm/resolved_ast"
+	"github.com/glassmonkey/zetasql-wasm/wasm/generated"
 )
 
 type (
@@ -173,16 +173,16 @@ func useTableNameForColumn(ctx context.Context) bool {
 	return value.(bool)
 }
 
-func withTableNameToColumnListMap(ctx context.Context, v map[string][]*ast.Column) context.Context {
+func withTableNameToColumnListMap(ctx context.Context, v map[string][]*generated.ResolvedColumnProto) context.Context {
 	return context.WithValue(ctx, tableNameToColumnListMapKey{}, v)
 }
 
-func tableNameToColumnListMap(ctx context.Context) map[string][]*ast.Column {
+func tableNameToColumnListMap(ctx context.Context) map[string][]*generated.ResolvedColumnProto {
 	value := ctx.Value(tableNameToColumnListMapKey{})
 	if value == nil {
 		return nil
 	}
-	return value.(map[string][]*ast.Column)
+	return value.(map[string][]*generated.ResolvedColumnProto)
 }
 
 func WithCurrentTime(ctx context.Context, now time.Time) context.Context {

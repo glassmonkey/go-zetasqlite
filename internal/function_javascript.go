@@ -59,7 +59,7 @@ func castJavaScriptValue(t types.Type, v goja.Value) (Value, error) {
 		return BoolValue(v.ToBoolean()), nil
 	case types.Float, types.Double:
 		return FloatValue(v.ToFloat()), nil
-	case types.String, types.ENUM:
+	case types.String, types.Enum:
 		return StringValue(v.ToString().String()), nil
 	case types.Bytes:
 		return BytesValue(v.ToString().String()), nil
@@ -100,7 +100,7 @@ func castJavaScriptValue(t types.Type, v goja.Value) (Value, error) {
 	case types.Json:
 		return JsonValue(v.ToString().String()), nil
 	case types.Array:
-		elemType := t.AsArray().ElementType()
+		elemType := t.AsArray().ElementType
 		var ret ArrayValue
 		for _, vv := range v.Export().([]interface{}) {
 			base, err := ValueFromGoValue(vv)
