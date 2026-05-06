@@ -11,7 +11,6 @@ import (
 	ast "github.com/glassmonkey/zetasql-wasm/resolved_ast"
 	"github.com/glassmonkey/zetasql-wasm/types"
 	"github.com/glassmonkey/zetasql-wasm/wasm/generated"
-	"github.com/goccy/go-zetasqlite/internal/zsqlcompat"
 )
 
 type Analyzer struct {
@@ -104,7 +103,28 @@ func newAnalyzerOptions() (*zetasql.AnalyzerOptions, error) {
 	} {
 		langOpt.EnableLanguageFeature(f)
 	}
-	langOpt.SetSupportedStatementKinds(zsqlcompat.SupportedStatementKinds())
+	// The set go-zetasqlite's stmt_action dispatcher handles. Statements
+	// outside this list are rejected at analysis time so unsupported SQL
+	// fails earlier and with a clearer error than a downstream "unknown
+	// resolved node kind" from the dispatcher.
+	langOpt.SetSupportedStatementKinds([]generated.ResolvedNodeKind{
+		generated.ResolvedNodeKind_RESOLVED_BEGIN_STMT,
+		generated.ResolvedNodeKind_RESOLVED_COMMIT_STMT,
+		generated.ResolvedNodeKind_RESOLVED_MERGE_STMT,
+		generated.ResolvedNodeKind_RESOLVED_QUERY_STMT,
+		generated.ResolvedNodeKind_RESOLVED_INSERT_STMT,
+		generated.ResolvedNodeKind_RESOLVED_UPDATE_STMT,
+		generated.ResolvedNodeKind_RESOLVED_DELETE_STMT,
+		generated.ResolvedNodeKind_RESOLVED_DROP_STMT,
+		generated.ResolvedNodeKind_RESOLVED_TRUNCATE_STMT,
+		generated.ResolvedNodeKind_RESOLVED_CREATE_TABLE_STMT,
+		generated.ResolvedNodeKind_RESOLVED_CREATE_TABLE_AS_SELECT_STMT,
+		generated.ResolvedNodeKind_RESOLVED_CREATE_PROCEDURE_STMT,
+		generated.ResolvedNodeKind_RESOLVED_CREATE_FUNCTION_STMT,
+		generated.ResolvedNodeKind_RESOLVED_CREATE_TABLE_FUNCTION_STMT,
+		generated.ResolvedNodeKind_RESOLVED_CREATE_VIEW_STMT,
+		generated.ResolvedNodeKind_RESOLVED_DROP_FUNCTION_STMT,
+	})
 	// Enable QUALIFY without WHERE
 	// https://github.com/google/zetasql/issues/124
 	langOpt.EnableReservableKeyword("QUALIFY", true)
