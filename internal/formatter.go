@@ -179,7 +179,7 @@ func getFuncNameAndArgs(ctx context.Context, node zsqlcompat.BaseFunctionCall, i
 	} else if isWindowFunc && existsWindowFunc {
 		funcName = fmt.Sprintf("%s_window_%s", funcPrefix, funcName)
 	} else {
-		if node.Function().IsZetaSQLBuiltin() {
+		if false /* TODO(zetasql-wasm-migration): IsZetaSQLBuiltin not in proto */ {
 			return "", nil, fmt.Errorf("%s function is unimplemented", funcName)
 		}
 		fname, err := getFuncName(ctx, node)
@@ -322,7 +322,7 @@ func (n *AggregateFunctionCallNode) FormatSQL(ctx context.Context) (string, erro
 	var opts []string
 	for _, item := range n.node.OrderByItemList() {
 		columnRef := item.GetColumnRef()
-		colName := uniqueColumnName(ctx, columnRef.Column())
+		colName := uniqueColumnName(ctx, columnRef.GetColumn())
 		if item.GetIsDescending() {
 			opts = append(opts, fmt.Sprintf("zetasqlite_order_by(`%s`, false)", colName))
 		} else {
@@ -439,12 +439,21 @@ func (n *CastNode) FormatSQL(ctx context.Context) (string, error) {
 	if n.node == nil {
 		return "", nil
 	}
-	fromType := newType(n.node.Expr().Type())
+	fromTypeProto := zsqlcompat.ExprType(n.node.Expr())
+	fromTypeT, err := zsqlcompat.TypeFromProto(fromTypeProto)
+	if err != nil {
+		return "", err
+	}
+	fromType := newType(fromTypeT)
 	jsonEncodedFromType, err := json.Marshal(fromType)
 	if err != nil {
 		return "", err
 	}
-	toType := newType(n.node.Type())
+	toTypeT, err := zsqlcompat.TypeFromProto(n.node.Type())
+	if err != nil {
+		return "", err
+	}
+	toType := newType(toTypeT)
 	jsonEncodedToType, err := json.Marshal(toType)
 	if err != nil {
 		return "", err
@@ -471,7 +480,11 @@ func (n *MakeStructNode) FormatSQL(ctx context.Context) (string, error) {
 	if n.node == nil {
 		return "", nil
 	}
-	typ := n.node.Type().AsStruct()
+	typT, err := zsqlcompat.TypeFromProto(n.node.Type())
+	if err != nil {
+		return "", err
+	}
+	typ := typT.AsStruct()
 	fieldNum := len(typ.Fields)
 	fields := n.node.FieldList()
 	args := make([]string, 0, fieldNum*2)
@@ -579,9 +592,7 @@ func (n *SubqueryExprNode) FormatSQL(ctx context.Context) (string, error) {
 	return fmt.Sprintf("(%s)", sql), nil
 }
 
-func (n *LetExprNode) FormatSQL(ctx context.Context) (string, error) {
-	return "", nil
-}
+// TODO(zetasql-wasm-migration): LetExprNode FormatSQL stub removed pending proto sync.
 
 func (n *ModelNode) FormatSQL(ctx context.Context) (string, error) {
 	return "", nil
@@ -669,15 +680,26 @@ func (n *ArrayScanNode) FormatSQL(ctx context.Context) (string, error) {
 	if n.node == nil {
 		return "", nil
 	}
-	arrayExpr, err := newNode(n.node.ArrayExpr()).FormatSQL(ctx)
+	// zetasql-wasm pluralised these accessors (ARRAY ZIP); pre-zip the
+	// list into the first element to mirror the previous single-array
+	// shape.
+	arrList := n.node.ArrayExprList()
+	if len(arrList) == 0 {
+		return "", nil
+	}
+	arrayExpr, err := newNode(arrList[0]).FormatSQL(ctx)
 	if err != nil {
 		return "", err
 	}
-	colName := uniqueColumnName(ctx, n.node.ElementColumn())
+	elemList := n.node.ElementColumnList()
+	if len(elemList) == 0 {
+		return "", nil
+	}
+	colName := uniqueColumnName(ctx, elemList[0])
 	columns := []string{fmt.Sprintf("json_each.value AS `%s`", colName)}
 
 	if offsetColumn := n.node.ArrayOffsetColumn(); offsetColumn != nil {
-		offsetColName := uniqueColumnName(ctx, offsetColumn.Column())
+		offsetColName := uniqueColumnName(ctx, offsetColumn.GetColumn())
 		columns = append(columns, fmt.Sprintf("json_each.key AS `%s`", offsetColName))
 	}
 	if n.node.InputScan() != nil {
@@ -787,7 +809,7 @@ func (n *AggregateScanNode) FormatSQL(ctx context.Context) (string, error) {
 		if _, err := newNode(col).FormatSQL(ctx); err != nil {
 			return "", err
 		}
-		colName := uniqueColumnName(ctx, col.Column())
+		colName := uniqueColumnName(ctx, col.GetColumn())
 		groupByColumns = append(groupByColumns, fmt.Sprintf("`%s`", colName))
 		groupByColumnMap[colName] = struct{}{}
 	}
@@ -811,7 +833,7 @@ func (n *AggregateScanNode) FormatSQL(ctx context.Context) (string, error) {
 			groupBySetColumns := []string{}
 			groupBySetColumnMap := map[string]struct{}{}
 			for _, col := range set.GroupByColumnList() {
-				colName := uniqueColumnName(ctx, col.Column())
+				colName := uniqueColumnName(ctx, col.GetColumn())
 				groupBySetColumns = append(groupBySetColumns, fmt.Sprintf("`%s`", colName))
 				groupBySetColumnMap[colName] = struct{}{}
 			}
@@ -991,8 +1013,8 @@ func (n *OrderByScanNode) FormatSQL(ctx context.Context) (string, error) {
 	}
 	orderByColumns := []string{}
 	for _, item := range n.node.OrderByItemList() {
-		colName := uniqueColumnName(ctx, item.GetColumnRef().Column())
-		switch item.NullOrder() {
+		colName := uniqueColumnName(ctx, item.GetColumnRef().GetColumn())
+		switch item.GetNullOrder() {
 		case zsqlcompat.NullOrderModeNullsFirst:
 			orderByColumns = append(
 				orderByColumns,
@@ -1115,10 +1137,10 @@ func (n *AnalyticScanNode) FormatSQL(ctx context.Context) (string, error) {
 	for _, group := range n.node.FunctionGroupList() {
 		scanOrderBy = []*analyticOrderBy{}
 
-		if group.PartitionBy() != nil {
+		if group.GetPartitionBy() != nil {
 			var partitionColumns []string
-			for _, columnRef := range group.PartitionBy().PartitionByList() {
-				colName := fmt.Sprintf("`%s`", uniqueColumnName(ctx, columnRef.Column()))
+			for _, columnRef := range group.GetPartitionBy().GetPartitionByList() {
+				colName := fmt.Sprintf("`%s`", uniqueColumnName(ctx, columnRef.GetColumn()))
 				partitionColumns = append(
 					partitionColumns,
 					colName,
@@ -1132,9 +1154,9 @@ func (n *AnalyticScanNode) FormatSQL(ctx context.Context) (string, error) {
 			}
 			ctx = withAnalyticPartitionColumnNames(ctx, partitionColumns)
 		}
-		if group.OrderBy() != nil {
-			for _, item := range group.OrderBy().OrderByItemList() {
-				colName := uniqueColumnName(ctx, item.GetColumnRef().Column())
+		if group.GetOrderBy() != nil {
+			for _, item := range group.GetOrderBy().OrderByItemList() {
+				colName := uniqueColumnName(ctx, item.GetColumnRef().GetColumn())
 				formattedColName := fmt.Sprintf("`%s`", colName)
 				order := &analyticOrderBy{
 					column: formattedColName,
@@ -1650,9 +1672,7 @@ func (n *UpdateItemNode) FormatSQL(ctx context.Context) (string, error) {
 	return fmt.Sprintf("%s=%s", target, setValue), nil
 }
 
-func (n *UpdateArrayItemNode) FormatSQL(ctx context.Context) (string, error) {
-	return "", nil
-}
+// TODO(zetasql-wasm-migration): UpdateArrayItemNode FormatSQL stub removed pending proto sync.
 
 func (n *UpdateStmtNode) FormatSQL(ctx context.Context) (string, error) {
 	if n == nil {
@@ -1810,9 +1830,7 @@ func (n *DropRowAccessPolicyStmtNode) FormatSQL(ctx context.Context) (string, er
 	return "", nil
 }
 
-func (n *DropSearchIndexStmtNode) FormatSQL(ctx context.Context) (string, error) {
-	return "", nil
-}
+// TODO(zetasql-wasm-migration): DropSearchIndexStmtNode FormatSQL stub removed pending proto sync.
 
 func (n *GrantToActionNode) FormatSQL(ctx context.Context) (string, error) {
 	return "", nil

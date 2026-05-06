@@ -24,6 +24,18 @@ type BaseFunctionCall interface {
 	ErrorMode() generated.ResolvedFunctionCallBaseEnums_ErrorMode
 }
 
+// ExprType pulls the *generated.TypeProto off any resolved expression node
+// that carries one. Most concrete ExprNode implementations expose a
+// `Type() *generated.TypeProto` method that the resolved_ast.ExprNode
+// interface itself doesn't surface; this helper does the type assertion
+// once and returns nil for the rare cases that don't.
+func ExprType(e resolved_ast.ExprNode) *generated.TypeProto {
+	if t, ok := e.(interface{ Type() *generated.TypeProto }); ok {
+		return t.Type()
+	}
+	return nil
+}
+
 // LanguageFeature is the language-feature flag type.
 type LanguageFeature = generated.LanguageFeature
 
