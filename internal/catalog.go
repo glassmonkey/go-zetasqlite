@@ -121,6 +121,13 @@ func (c *Catalog) FindFunction(path []string) (*types.Function, error) {
 	return c.catalog.FindFunction(path)
 }
 
+// SimpleCatalog returns the underlying zetasql-wasm catalog so callers can
+// pass it to Analyzer.AnalyzeStatement (which expects *types.SimpleCatalog
+// directly).
+func (c *Catalog) SimpleCatalog() *types.SimpleCatalog {
+	return c.catalog
+}
+
 func (c *Catalog) formatNamePath(path []string) string {
 	return strings.Join(path, "_")
 }

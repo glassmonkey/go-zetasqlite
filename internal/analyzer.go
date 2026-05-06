@@ -9,7 +9,6 @@ import (
 	"github.com/glassmonkey/zetasql-wasm"
 	parsed_ast "github.com/glassmonkey/zetasql-wasm/ast"
 	ast "github.com/glassmonkey/zetasql-wasm/resolved_ast"
-	"github.com/glassmonkey/zetasql-wasm/types"
 	"github.com/glassmonkey/zetasql-wasm/wasm/generated"
 	"github.com/goccy/go-zetasqlite/internal/zsqlcompat"
 )
@@ -131,7 +130,7 @@ func (a *Analyzer) parseScript(query string) ([]parsed_ast.StatementNode, error)
 		}
 		switch s := stmt.(type) {
 		case *parsed_ast.BeginEndBlockNode:
-			stmts = append(stmts, s.StatementList()...)
+			stmts = append(stmts, s.StatementListNode().StatementList()...)
 		default:
 			stmts = append(stmts, s)
 		}
@@ -190,7 +189,7 @@ func (a *Analyzer) Analyze(ctx context.Context, conn *Conn, query string, args [
 			if err != nil {
 				return nil, err
 			}
-			a.opt.SetParameterMode(mode)
+			a.opt.ParameterMode = mode
 			out, err := zetasql.AnalyzeStatementFromParserAST(
 				query,
 				stmt,
@@ -223,7 +222,7 @@ func (a *Analyzer) context(
 	ctx = withAnalyzer(ctx, a)
 	ctx = withNamePath(ctx, a.namePath)
 	ctx = withColumnRefMap(ctx, map[string]string{})
-	ctx = withTableNameToColumnListMap(ctx, map[string][]*ast.Column{})
+	ctx = withTableNameToColumnListMap(ctx, map[string][]*generated.ResolvedColumnProto{})
 	ctx = withFuncMap(ctx, funcMap)
 	ctx = withAnalyticOrderColumnNames(ctx, &analyticOrderColumnNames{})
 	ctx = withNodeMap(ctx, zetasql.NewNodeMap(stmtNode, stmt))
@@ -278,7 +277,7 @@ func (a *Analyzer) newStmtAction(ctx context.Context, query string, args []drive
 	case ast.KindCommitStmt:
 		return a.newCommitStmtAction(ctx, query, args, node)
 	}
-	return nil, fmt.Errorf("unsupported stmt %s", node.DebugString())
+	return nil, fmt.Errorf("unsupported stmt %s", node.String())
 }
 
 func (a *Analyzer) newCreateTableStmtAction(_ context.Context, query string, args []driver.NamedValue, node *ast.CreateTableStmtNode) (*CreateTableStmtAction, error) {
@@ -356,11 +355,13 @@ func (a *Analyzer) newCreateViewStmtAction(ctx context.Context, _ string, _ []dr
 	}, nil
 }
 
-func (a *Analyzer) resultTypeIsTemplatedType(sig *types.FunctionSignature) bool {
-	if !sig.IsTemplated() {
-		return false
+func (a *Analyzer) resultTypeIsTemplatedType(sig *generated.FunctionSignatureProto) bool {
+	for _, arg := range sig.GetArgument() {
+		if arg.GetKind() != generated.SignatureArgumentKind_ARG_TYPE_FIXED {
+			return sig.GetReturnType().GetKind() != generated.SignatureArgumentKind_ARG_TYPE_FIXED
+		}
 	}
-	return sig.ResultType().IsTemplated()
+	return false
 }
 
 var inferTypes = []string{
@@ -498,9 +499,13 @@ func (a *Analyzer) newDMLStmtAction(ctx context.Context, query string, args []dr
 func (a *Analyzer) newQueryStmtAction(ctx context.Context, query string, args []driver.NamedValue, node *ast.QueryStmtNode) (*QueryStmtAction, error) {
 	outputColumns := []*ColumnSpec{}
 	for _, col := range node.OutputColumnList() {
+		colType, err := zsqlcompat.TypeFromProto(col.Column().GetType())
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert output column type: %w", err)
+		}
 		outputColumns = append(outputColumns, &ColumnSpec{
-			Name: col.GetName(),
-			Type: newType(col.Column().GetType()),
+			Name: col.Name(),
+			Type: newType(colType),
 		})
 	}
 	formattedQuery, err := newNode(node).FormatSQL(ctx)
@@ -556,7 +561,7 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 	if !ok {
 		return nil, fmt.Errorf("currently MERGE expression is supported equal expression only")
 	}
-	if fn.Function().FullName(false) != "$equal" {
+	if fn.Function().GetName() != "$equal" {
 		return nil, fmt.Errorf("currently MERGE expression is supported equal expression only")
 	}
 	argList := fn.ArgumentList()
@@ -572,8 +577,8 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 		return nil, fmt.Errorf("unexpected MERGE expression. expected column reference but got %T", argList[1])
 	}
 	var (
-		sourceColumn *ast.Column
-		targetColumn *ast.Column
+		sourceColumn *generated.ResolvedColumnProto
+		targetColumn *generated.ResolvedColumnProto
 	)
 	if strings.Contains(sourceTable, colA.Column().GetTableName()) {
 		sourceColumn = colA.Column()
@@ -597,7 +602,7 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 	// exists target table and source table
 	matchedFromStmt := fmt.Sprintf(
 		"FROM zetasqlite_merged_table WHERE %[2]s = %[1]s AND %[3]s = %[1]s",
-		targetColumn.Name(),
+		targetColumn.GetName(),
 		mergedTableSourceColumnName,
 		mergedTableTargetColumnName,
 	)
@@ -605,7 +610,7 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 	// exists target table but not exists source table
 	notMatchedBySourceFromStmt := fmt.Sprintf(
 		"FROM zetasqlite_merged_table WHERE %[2]s = `%[1]s` AND %[3]s IS NULL",
-		targetColumn.Name(),
+		targetColumn.GetName(),
 		mergedTableTargetColumnName,
 		mergedTableSourceColumnName,
 	)
@@ -613,7 +618,7 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 	// exists source table but not exists target table
 	notMatchedByTargetFromStmt := fmt.Sprintf(
 		"FROM zetasqlite_merged_table WHERE %[2]s = `%[1]s` AND %[3]s IS NULL",
-		sourceColumn.Name(),
+		sourceColumn.GetName(),
 		mergedTableSourceColumnName,
 		mergedTableTargetColumnName,
 	)
@@ -644,10 +649,10 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 			}
 			stmts = append(stmts, fmt.Sprintf(
 				"INSERT INTO `%[1]s`(%[2]s) SELECT %[3]s FROM (SELECT * FROM `%[4]s` %[5]s)",
-				targetColumn.TableName(),
+				targetColumn.GetTableName(),
 				strings.Join(columns, ","),
 				row,
-				sourceColumn.TableName(),
+				sourceColumn.GetTableName(),
 				whereStmt,
 			))
 		case zsqlcompat.ActionTypeUpdate:
@@ -661,14 +666,14 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 			}
 			stmts = append(stmts, fmt.Sprintf(
 				"UPDATE `%s` SET %s %s",
-				targetColumn.TableName(),
+				targetColumn.GetTableName(),
 				strings.Join(items, ","),
 				fromStmt,
 			))
 		case zsqlcompat.ActionTypeDelete:
 			stmts = append(stmts, fmt.Sprintf(
 				"DELETE FROM `%s` %s",
-				targetColumn.TableName(),
+				targetColumn.GetTableName(),
 				whereStmt,
 			))
 		}
