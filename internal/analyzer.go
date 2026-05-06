@@ -19,18 +19,41 @@ type Analyzer struct {
 	isExplainMode   bool
 	catalog         *Catalog
 	opt             *zetasql.AnalyzerOptions
+	analyzer        *zetasql.Analyzer
+	parser          *zetasql.Parser
 }
 
-func NewAnalyzer(catalog *Catalog) (*Analyzer, error) {
+func NewAnalyzer(ctx context.Context, catalog *Catalog) (*Analyzer, error) {
 	opt, err := newAnalyzerOptions()
 	if err != nil {
 		return nil, err
+	}
+	wasmAnalyzer, err := zetasql.NewAnalyzer(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to init zetasql-wasm analyzer: %w", err)
+	}
+	wasmParser, err := zetasql.NewParser(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to init zetasql-wasm parser: %w", err)
 	}
 	return &Analyzer{
 		catalog:  catalog,
 		opt:      opt,
 		namePath: &NamePath{},
+		analyzer: wasmAnalyzer,
+		parser:   wasmParser,
 	}, nil
+}
+
+// Close releases the embedded WASM runtimes.
+func (a *Analyzer) Close(ctx context.Context) error {
+	if a.parser != nil {
+		_ = a.parser.Close(ctx)
+	}
+	if a.analyzer != nil {
+		return a.analyzer.Close(ctx)
+	}
+	return nil
 }
 
 func newAnalyzerOptions() (*zetasql.AnalyzerOptions, error) {
@@ -120,25 +143,25 @@ func (a *Analyzer) AddNamePath(path string) error {
 	return a.namePath.addPath(path)
 }
 
-func (a *Analyzer) parseScript(query string) ([]parsed_ast.StatementNode, error) {
-	loc := zetasql.NewParseResumeLocation(query)
-	var stmts []parsed_ast.StatementNode
-	for {
-		stmt, isEnd, err := zetasql.ParseNextScriptStatement(loc, a.opt.ParserOptions())
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse statement: %w", err)
-		}
-		switch s := stmt.(type) {
-		case *parsed_ast.BeginEndBlockNode:
-			stmts = append(stmts, s.StatementListNode().StatementList()...)
-		default:
-			stmts = append(stmts, s)
-		}
-		if isEnd {
-			break
-		}
+func (a *Analyzer) parseScript(ctx context.Context, query string) ([]parsed_ast.StatementNode, error) {
+	// TODO(zetasql-wasm-migration): zetasql-wasm doesn't yet expose a
+	// ParseNextScriptStatement loop, so multi-top-level scripts
+	// (e.g. "SELECT 1; SELECT 2;") are reduced to a single parse here.
+	// BeginEndBlock is unpacked, matching the previous behaviour for the
+	// scripted-block case.
+	stmt, err := a.parser.ParseStatement(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse statement: %w", err)
 	}
-	return stmts, nil
+	root := stmt.Root
+	switch s := root.(type) {
+	case *parsed_ast.BeginEndBlockNode:
+		return s.StatementListNode().StatementList(), nil
+	}
+	if root, ok := root.(parsed_ast.StatementNode); ok {
+		return []parsed_ast.StatementNode{root}, nil
+	}
+	return nil, fmt.Errorf("unexpected root node %T", root)
 }
 
 func (a *Analyzer) getParameterMode(stmt parsed_ast.StatementNode) (zsqlcompat.ParameterMode, error) {
@@ -173,7 +196,7 @@ func (a *Analyzer) Analyze(ctx context.Context, conn *Conn, query string, args [
 	if err := a.catalog.Sync(ctx, conn); err != nil {
 		return nil, fmt.Errorf("failed to sync catalog: %w", err)
 	}
-	stmts, err := a.parseScript(query)
+	stmts, err := a.parseScript(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse statements: %w", err)
 	}
@@ -190,16 +213,18 @@ func (a *Analyzer) Analyze(ctx context.Context, conn *Conn, query string, args [
 				return nil, err
 			}
 			a.opt.ParameterMode = mode
-			out, err := zetasql.AnalyzeStatementFromParserAST(
-				query,
-				stmt,
-				a.catalog,
-				a.opt,
-			)
+			// TODO(zetasql-wasm-migration): zetasql-wasm has no
+			// AnalyzeStatementFromParserAST equivalent — re-analyse from
+			// SQL text. Fine for single-statement queries; for scripted
+			// inputs the parseScript split already handed us the SQL form
+			// of each statement is unavailable, so we pass the original
+			// query when there's only one statement and rely on the
+			// fork's scripted-block fallback otherwise.
+			out, err := a.analyzer.AnalyzeStatement(ctx, query, a.catalog.SimpleCatalog(), a.opt)
 			if err != nil {
 				return nil, fmt.Errorf("failed to analyze: %w", err)
 			}
-			stmtNode := out.Statement()
+			stmtNode := out.Statement
 			ctx = a.context(ctx, funcMap, stmtNode, stmt)
 			action, err := a.newStmtAction(ctx, query, args, stmtNode)
 			if err != nil {
@@ -225,16 +250,21 @@ func (a *Analyzer) context(
 	ctx = withTableNameToColumnListMap(ctx, map[string][]*generated.ResolvedColumnProto{})
 	ctx = withFuncMap(ctx, funcMap)
 	ctx = withAnalyticOrderColumnNames(ctx, &analyticOrderColumnNames{})
-	ctx = withNodeMap(ctx, zetasql.NewNodeMap(stmtNode, stmt))
+	// TODO(zetasql-wasm-migration): zetasql.NewNodeMap takes only the
+	// resolved statement; the parsed AST counterpart needs a separate
+	// reverse-lookup design (see development-plan.md). Drop the second
+	// argument for now.
+	_ = stmt
+	ctx = withNodeMap(ctx, zetasql.NewNodeMap(stmtNode))
 	return ctx
 }
 
 func (a *Analyzer) analyzeTemplatedFunctionWithRuntimeArgument(ctx context.Context, query string) (*FunctionSpec, error) {
-	out, err := zetasql.AnalyzeStatement(query, a.catalog, a.opt)
+	out, err := a.analyzer.AnalyzeStatement(ctx, query, a.catalog.SimpleCatalog(), a.opt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to analyze: %w", err)
 	}
-	node := out.Statement()
+	node := out.Statement
 	stmt, ok := node.(*ast.CreateFunctionStmtNode)
 	if !ok {
 		return nil, fmt.Errorf("unexpected create function query %s", query)
@@ -319,7 +349,7 @@ func (a *Analyzer) newCreateTableAsSelectStmtAction(ctx context.Context, _ strin
 func (a *Analyzer) newCreateFunctionStmtAction(ctx context.Context, query string, _ []driver.NamedValue, node *ast.CreateFunctionStmtNode) (*CreateFunctionStmtAction, error) {
 	var spec *FunctionSpec
 	if a.resultTypeIsTemplatedType(node.Signature()) {
-		realStmts, err := a.inferTemplatedTypeByRealType(query, node)
+		realStmts, err := a.inferTemplatedTypeByRealType(ctx, query, node)
 		if err != nil {
 			return nil, err
 		}
@@ -371,19 +401,19 @@ var inferTypes = []string{
 	"STRUCT<>",
 }
 
-func (a *Analyzer) inferTemplatedTypeByRealType(query string, node *ast.CreateFunctionStmtNode) ([]*ast.CreateFunctionStmtNode, error) {
+func (a *Analyzer) inferTemplatedTypeByRealType(ctx context.Context, query string, node *ast.CreateFunctionStmtNode) ([]*ast.CreateFunctionStmtNode, error) {
 	var stmts []*ast.CreateFunctionStmtNode
 	for _, typ := range inferTypes {
-		if out, err := zetasql.AnalyzeStatement(a.buildScalarTypeFuncFromTemplatedFunc(node, typ), a.catalog, a.opt); err == nil {
-			stmts = append(stmts, out.Statement().(*ast.CreateFunctionStmtNode))
+		if out, err := a.analyzer.AnalyzeStatement(ctx, a.buildScalarTypeFuncFromTemplatedFunc(node, typ), a.catalog.SimpleCatalog(), a.opt); err == nil {
+			stmts = append(stmts, out.Statement.(*ast.CreateFunctionStmtNode))
 		}
 	}
 	if len(stmts) != 0 {
 		return stmts, nil
 	}
 	for _, typ := range inferTypes {
-		if out, err := zetasql.AnalyzeStatement(a.buildArrayTypeFuncFromTemplatedFunc(node, typ), a.catalog, a.opt); err == nil {
-			stmts = append(stmts, out.Statement().(*ast.CreateFunctionStmtNode))
+		if out, err := a.analyzer.AnalyzeStatement(ctx, a.buildArrayTypeFuncFromTemplatedFunc(node, typ), a.catalog.SimpleCatalog(), a.opt); err == nil {
+			stmts = append(stmts, out.Statement.(*ast.CreateFunctionStmtNode))
 		}
 	}
 	if len(stmts) != 0 {
