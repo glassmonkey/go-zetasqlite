@@ -58,14 +58,14 @@ func (s *FunctionSpec) SQL() string {
 	args := []string{}
 	for _, arg := range s.Args {
 		t, _ := arg.Type.ToZetaSQLType()
-		args = append(args, fmt.Sprintf("%s %s", arg.Name, t.Kind()))
+		args = append(args, fmt.Sprintf("%s %s", arg.Name, zsqlcompat.KindString(t.Kind())))
 	}
 	retType, _ := s.Return.ToZetaSQLType()
 	return fmt.Sprintf(
 		"CREATE FUNCTION `%s`(%s) RETURNS %s AS (%s)",
 		s.FuncName(),
 		strings.Join(args, ", "),
-		retType.Kind(),
+		zsqlcompat.KindString(retType.Kind()),
 		s.Body,
 	)
 }

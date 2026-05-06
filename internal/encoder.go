@@ -454,7 +454,7 @@ func CastValue(t types.Type, v Value) (Value, error) {
 	case types.Geography:
 		return v, nil
 	}
-	return nil, fmt.Errorf("unsupported cast %s value", t.Kind())
+	return nil, fmt.Errorf("unsupported cast %s value", zsqlcompat.KindString(t.Kind()))
 }
 
 func ValueFromGoValue(v interface{}) (Value, error) {

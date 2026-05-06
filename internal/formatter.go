@@ -807,7 +807,7 @@ func (n *AggregateScanNode) FormatSQL(ctx context.Context) (string, error) {
 	groupByColumns := []string{}
 	groupByColumnMap := map[string]struct{}{}
 	for _, col := range n.node.GroupByList() {
-		if _, err := newNode(col).FormatSQL(ctx); err != nil {
+		if _, err := newNode(ast.NewComputedColumnNode(col)).FormatSQL(ctx); err != nil {
 			return "", err
 		}
 		colName := uniqueColumnName(ctx, col.GetColumn())
@@ -1171,7 +1171,7 @@ func (n *AnalyticScanNode) FormatSQL(ctx context.Context) (string, error) {
 				scanOrderBy = append(scanOrderBy, order)
 			}
 		}
-		if _, err := newNode(group).FormatSQL(ctx); err != nil {
+		if _, err := newNode(ast.NewAnalyticFunctionGroupNode(group)).FormatSQL(ctx); err != nil {
 			return "", err
 		}
 
@@ -1503,7 +1503,7 @@ func (n *WithScanNode) FormatSQL(ctx context.Context) (string, error) {
 	}
 	queries := []string{}
 	for _, entry := range n.node.WithEntryList() {
-		sql, err := newNode(entry).FormatSQL(ctx)
+		sql, err := newNode(ast.NewWithEntryNode(entry)).FormatSQL(ctx)
 		if err != nil {
 			return "", err
 		}
