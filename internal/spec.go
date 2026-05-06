@@ -11,7 +11,6 @@ import (
 	"github.com/glassmonkey/zetasql-wasm/types"
 	"github.com/glassmonkey/zetasql-wasm/wasm/generated"
 	"github.com/goccy/go-json"
-	"github.com/goccy/go-zetasqlite/internal/zsqlcompat"
 )
 
 type NameWithType struct {
@@ -112,15 +111,15 @@ func (s *FunctionSpec) CallSQL(ctx context.Context, callNode ast.BaseFunctionCal
 }
 
 type TableSpec struct {
-	IsTemp     bool                  `json:"isTemp"`
-	IsView     bool                  `json:"isView"`
-	NamePath   []string              `json:"namePath"`
-	Columns    []*ColumnSpec         `json:"columns"`
-	PrimaryKey []string              `json:"primaryKey"`
-	CreateMode zsqlcompat.CreateMode `json:"createMode"`
-	Query      string                `json:"query"`
-	UpdatedAt  time.Time             `json:"updatedAt"`
-	CreatedAt  time.Time             `json:"createdAt"`
+	IsTemp     bool           `json:"isTemp"`
+	IsView     bool           `json:"isView"`
+	NamePath   []string       `json:"namePath"`
+	Columns    []*ColumnSpec  `json:"columns"`
+	PrimaryKey []string       `json:"primaryKey"`
+	CreateMode ast.CreateMode `json:"createMode"`
+	Query      string         `json:"query"`
+	UpdatedAt  time.Time      `json:"updatedAt"`
+	CreatedAt  time.Time      `json:"createdAt"`
 }
 
 func (s *TableSpec) Column(name string) *ColumnSpec {
@@ -155,11 +154,11 @@ func (s *TableSpec) SQLiteSchema() string {
 	}
 	var stmt string
 	switch s.CreateMode {
-	case zsqlcompat.CreateDefaultMode:
+	case ast.CreateDefaultMode:
 		stmt = "CREATE TABLE"
-	case zsqlcompat.CreateOrReplaceMode:
+	case ast.CreateOrReplaceMode:
 		stmt = "CREATE TABLE"
-	case zsqlcompat.CreateIfNotExistsMode:
+	case ast.CreateIfNotExistsMode:
 		stmt = "CREATE TABLE IF NOT EXISTS"
 	}
 	return fmt.Sprintf("%s `%s` (%s)", stmt, s.TableName(), strings.Join(columns, ","))
@@ -168,11 +167,11 @@ func (s *TableSpec) SQLiteSchema() string {
 func viewSQLiteSchema(s *TableSpec) string {
 	var stmt string
 	switch s.CreateMode {
-	case zsqlcompat.CreateDefaultMode:
+	case ast.CreateDefaultMode:
 		stmt = "CREATE VIEW"
-	case zsqlcompat.CreateOrReplaceMode:
+	case ast.CreateOrReplaceMode:
 		stmt = "CREATE VIEW"
-	case zsqlcompat.CreateIfNotExistsMode:
+	case ast.CreateIfNotExistsMode:
 		stmt = "CREATE VIEW IF NOT EXISTS"
 	}
 	return fmt.Sprintf("%s `%s` AS %s", stmt, s.TableName(), s.Query)
@@ -412,7 +411,7 @@ func newFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast.CreateFu
 	}
 	now := time.Now()
 	return &FunctionSpec{
-		IsTemp:    stmt.CreateScope() == zsqlcompat.CreateScopeTemp,
+		IsTemp:    stmt.CreateScope() == ast.CreateTempScope,
 		NamePath:  namePath.mergePath(stmt.NamePath()),
 		Args:      args,
 		Return:    newType(returnType),
@@ -522,7 +521,7 @@ func newTemplatedFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast
 	}
 	now := time.Now()
 	return &FunctionSpec{
-		IsTemp:    stmt.CreateScope() == zsqlcompat.CreateScopeTemp,
+		IsTemp:    stmt.CreateScope() == ast.CreateTempScope,
 		NamePath:  namePath.mergePath(stmt.NamePath()),
 		Args:      args,
 		Return:    retType,
@@ -590,7 +589,7 @@ func newTableSpec(namePath *NamePath, stmt *ast.CreateTableStmtNode) (*TableSpec
 		return nil, err
 	}
 	return &TableSpec{
-		IsTemp:     stmt.CreateScope() == zsqlcompat.CreateScopeTemp,
+		IsTemp:     stmt.CreateScope() == ast.CreateTempScope,
 		NamePath:   namePath.mergePath(stmt.NamePath()),
 		Columns:    cols,
 		PrimaryKey: newPrimaryKey(stmt.PrimaryKey()),
@@ -617,7 +616,7 @@ func newTableAsViewSpec(namePath *NamePath, query string, stmt *ast.CreateViewSt
 	}
 	now := time.Now()
 	return &TableSpec{
-		IsTemp:     stmt.CreateScope() == zsqlcompat.CreateScopeTemp,
+		IsTemp:     stmt.CreateScope() == ast.CreateTempScope,
 		IsView:     true,
 		NamePath:   namePath.mergePath(stmt.NamePath()),
 		Columns:    cols,
@@ -645,7 +644,7 @@ func newTableAsSelectSpec(namePath *NamePath, query string, stmt *ast.CreateTabl
 	}
 	now := time.Now()
 	return &TableSpec{
-		IsTemp:     stmt.CreateScope() == zsqlcompat.CreateScopeTemp,
+		IsTemp:     stmt.CreateScope() == ast.CreateTempScope,
 		NamePath:   namePath.mergePath(stmt.NamePath()),
 		Columns:    cols,
 		PrimaryKey: newPrimaryKey(stmt.PrimaryKey()),

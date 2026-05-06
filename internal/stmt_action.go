@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	ast "github.com/glassmonkey/zetasql-wasm/resolved_ast"
-	"github.com/goccy/go-zetasqlite/internal/zsqlcompat"
 )
 
 type StmtAction interface {
@@ -27,7 +26,7 @@ type CreateTableStmtAction struct {
 }
 
 func (a *CreateTableStmtAction) Prepare(ctx context.Context, conn *Conn) (driver.Stmt, error) {
-	if a.spec.CreateMode == zsqlcompat.CreateOrReplaceMode {
+	if a.spec.CreateMode == ast.CreateOrReplaceMode {
 		if _, err := conn.ExecContext(
 			ctx,
 			fmt.Sprintf("DROP TABLE IF EXISTS `%s`", a.spec.TableName()),
@@ -62,7 +61,7 @@ func (a *CreateTableStmtAction) createIndexAutomatically(ctx context.Context, co
 }
 
 func (a *CreateTableStmtAction) exec(ctx context.Context, conn *Conn) error {
-	if a.spec.CreateMode == zsqlcompat.CreateOrReplaceMode {
+	if a.spec.CreateMode == ast.CreateOrReplaceMode {
 		if _, err := conn.ExecContext(
 			ctx,
 			fmt.Sprintf("DROP TABLE IF EXISTS `%s`", a.spec.TableName()),
@@ -129,7 +128,7 @@ type CreateViewStmtAction struct {
 }
 
 func (a *CreateViewStmtAction) Prepare(ctx context.Context, conn *Conn) (driver.Stmt, error) {
-	if a.spec.CreateMode == zsqlcompat.CreateOrReplaceMode {
+	if a.spec.CreateMode == ast.CreateOrReplaceMode {
 		if _, err := conn.ExecContext(
 			ctx,
 			fmt.Sprintf("DROP VIEW IF EXISTS `%s`", a.spec.TableName()),
@@ -145,7 +144,7 @@ func (a *CreateViewStmtAction) Prepare(ctx context.Context, conn *Conn) (driver.
 }
 
 func (a *CreateViewStmtAction) exec(ctx context.Context, conn *Conn) error {
-	if a.spec.CreateMode == zsqlcompat.CreateOrReplaceMode {
+	if a.spec.CreateMode == ast.CreateOrReplaceMode {
 		if _, err := conn.ExecContext(
 			ctx,
 			fmt.Sprintf("DROP VIEW IF EXISTS `%s`", a.spec.TableName()),

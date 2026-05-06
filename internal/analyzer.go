@@ -665,11 +665,11 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 	for _, when := range node.WhenClauseList() {
 		var fromStmt string
 		switch when.MatchType() {
-		case zsqlcompat.MatchTypeMatched:
+		case ast.MatchTypeMatched:
 			fromStmt = matchedFromStmt
-		case zsqlcompat.MatchTypeNotMatchedBySource:
+		case ast.MatchTypeNotMatchedBySource:
 			fromStmt = notMatchedBySourceFromStmt
-		case zsqlcompat.MatchTypeNotMatchedByTarget:
+		case ast.MatchTypeNotMatchedByTarget:
 			fromStmt = notMatchedByTargetFromStmt
 		}
 		whereStmt := fmt.Sprintf(
@@ -678,7 +678,7 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 			fromStmt,
 		)
 		switch when.ActionType() {
-		case zsqlcompat.ActionTypeInsert:
+		case ast.ActionTypeInsert:
 			var columns []string
 			for _, col := range when.InsertColumnList() {
 				columns = append(columns, fmt.Sprintf("`%s`", col.GetName()))
@@ -695,7 +695,7 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 				sourceColumn.GetTableName(),
 				whereStmt,
 			))
-		case zsqlcompat.ActionTypeUpdate:
+		case ast.ActionTypeUpdate:
 			var items []string
 			for _, item := range when.UpdateItemList() {
 				sql, err := newNode(item).FormatSQL(ctx)
@@ -710,7 +710,7 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 				strings.Join(items, ","),
 				fromStmt,
 			))
-		case zsqlcompat.ActionTypeDelete:
+		case ast.ActionTypeDelete:
 			stmts = append(stmts, fmt.Sprintf(
 				"DELETE FROM `%s` %s",
 				targetColumn.GetTableName(),

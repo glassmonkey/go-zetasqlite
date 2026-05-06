@@ -11,7 +11,6 @@ import (
 	"github.com/glassmonkey/zetasql-wasm/types"
 	"github.com/glassmonkey/zetasql-wasm/wasm/generated"
 	"github.com/goccy/go-json"
-	"github.com/goccy/go-zetasqlite/internal/zsqlcompat"
 )
 
 type Formatter interface {
@@ -152,7 +151,7 @@ func getFuncNameAndArgs(ctx context.Context, node ast.BaseFunctionCall, isWindow
 	currentTime := CurrentTime(ctx)
 
 	funcPrefix := "zetasqlite"
-	if node.ErrorMode() == zsqlcompat.SafeErrorMode {
+	if node.ErrorMode() == ast.SafeErrorMode {
 		if !existsNormalFunc {
 			return "", nil, fmt.Errorf("SAFE is not supported for function %s", funcName)
 		}
@@ -341,9 +340,9 @@ func (n *AggregateFunctionCallNode) FormatSQL(ctx context.Context) (string, erro
 		opts = append(opts, fmt.Sprintf("zetasqlite_limit(%s)", limitValue))
 	}
 	switch n.node.NullHandlingModifier() {
-	case zsqlcompat.IgnoreNulls:
+	case ast.IgnoreNulls:
 		opts = append(opts, "zetasqlite_ignore_nulls()")
-	case zsqlcompat.RespectNulls:
+	case ast.RespectNulls:
 	}
 	args = append(args, opts...)
 	return fmt.Sprintf(
@@ -368,7 +367,7 @@ func (n *AnalyticFunctionCallNode) FormatSQL(ctx context.Context) (string, error
 		opts = append(opts, "zetasqlite_distinct()")
 	}
 	switch n.node.NullHandlingModifier() {
-	case zsqlcompat.RespectNulls:
+	case ast.RespectNulls:
 		// do nothing
 	default:
 		opts = append(opts, "zetasqlite_ignore_nulls()")
@@ -382,7 +381,7 @@ func (n *AnalyticFunctionCallNode) FormatSQL(ctx context.Context) (string, error
 	}
 	windowFrame := n.node.WindowFrame()
 	if windowFrame != nil {
-		args = append(args, getWindowFrameUnitOptionFuncSQL(windowFrame.GetFrameUnit()))
+		args = append(args, getWindowFrameUnitOptionFuncSQL(ast.FrameUnit(windowFrame.GetFrameUnit())))
 		startSQL, err := n.getWindowBoundaryOptionFuncSQL(ctx, windowFrame.GetStartExpr(), true)
 		if err != nil {
 			return "", err
@@ -408,14 +407,14 @@ func (n *AnalyticFunctionCallNode) FormatSQL(ctx context.Context) (string, error
 }
 
 func (n *AnalyticFunctionCallNode) getWindowBoundaryOptionFuncSQL(ctx context.Context, expr *generated.ResolvedWindowFrameExprProto, isStart bool) (string, error) {
-	typ := expr.GetBoundaryType()
+	typ := ast.BoundaryType(expr.GetBoundaryType())
 	switch typ {
-	case zsqlcompat.UnboundedPrecedingType, zsqlcompat.CurrentRowType, zsqlcompat.UnboundedFollowingType:
+	case ast.UnboundedPrecedingType, ast.CurrentRowType, ast.UnboundedFollowingType:
 		if isStart {
 			return getWindowBoundaryStartOptionFuncSQL(typ, ""), nil
 		}
 		return getWindowBoundaryEndOptionFuncSQL(typ, ""), nil
-	case zsqlcompat.OffsetPrecedingType, zsqlcompat.OffsetFollowingType:
+	case ast.OffsetPrecedingType, ast.OffsetFollowingType:
 		// TODO(zetasql-wasm-migration): expr.Expression() returned a wrapped
 		// ExprNode in go-zetasql; zetasql-wasm leaves it as a raw
 		// AnyResolvedExprProto. Once an exported WrapExpr lands upstream,
@@ -574,23 +573,23 @@ func (n *SubqueryExprNode) FormatSQL(ctx context.Context) (string, error) {
 		return "", err
 	}
 	switch n.node.SubqueryType() {
-	case zsqlcompat.SubqueryTypeScalar:
-	case zsqlcompat.SubqueryTypeArray:
+	case ast.SubqueryTypeScalar:
+	case ast.SubqueryTypeArray:
 		if len(ast.ScanColumnList(n.node.Subquery())) == 0 {
 			return "", fmt.Errorf("failed to find computed column names for array subquery")
 		}
 		colName := uniqueColumnName(ctx, ast.ScanColumnList(n.node.Subquery())[0])
 		return fmt.Sprintf("(SELECT zetasqlite_array(`%s`) FROM (%s))", colName, sql), nil
-	case zsqlcompat.SubqueryTypeExists:
+	case ast.SubqueryTypeExists:
 		return fmt.Sprintf("EXISTS (%s)", sql), nil
-	case zsqlcompat.SubqueryTypeIn:
+	case ast.SubqueryTypeIn:
 		expr, err := newNode(n.node.InExpr()).FormatSQL(ctx)
 		if err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("%s IN (%s)", expr, sql), nil
-	case zsqlcompat.SubqueryTypeLikeAny:
-	case zsqlcompat.SubqueryTypeLikeAll:
+	case ast.SubqueryTypeLikeAny:
+	case ast.SubqueryTypeLikeAll:
 	}
 	return fmt.Sprintf("(%s)", sql), nil
 }
@@ -665,13 +664,13 @@ func (n *JoinScanNode) FormatSQL(ctx context.Context) (string, error) {
 		return "", err
 	}
 	switch n.node.JoinType() {
-	case zsqlcompat.JoinTypeInner:
+	case ast.JoinTypeInner:
 		return fmt.Sprintf("%s JOIN %s ON %s", left, right, joinExpr), nil
-	case zsqlcompat.JoinTypeLeft:
+	case ast.JoinTypeLeft:
 		return fmt.Sprintf("%s LEFT JOIN %s ON %s", left, right, joinExpr), nil
-	case zsqlcompat.JoinTypeRight:
+	case ast.JoinTypeRight:
 		return fmt.Sprintf("%s RIGHT JOIN %s ON %s", left, right, joinExpr), nil
-	case zsqlcompat.JoinTypeFull:
+	case ast.JoinTypeFull:
 		return fmt.Sprintf("%s FULL OUTER JOIN %s ON %s", left, right, joinExpr), nil
 	}
 	return "", fmt.Errorf("unexpected join type %d", n.node.JoinType())
@@ -935,17 +934,17 @@ func (n *SetOperationScanNode) FormatSQL(ctx context.Context) (string, error) {
 	}
 	var opType string
 	switch n.node.OpType() {
-	case zsqlcompat.SetOperationTypeUnionAll:
+	case ast.SetOperationTypeUnionAll:
 		opType = "UNION ALL"
-	case zsqlcompat.SetOperationTypeUnionDistinct:
+	case ast.SetOperationTypeUnionDistinct:
 		opType = "UNION"
-	case zsqlcompat.SetOperationTypeIntersectAll:
+	case ast.SetOperationTypeIntersectAll:
 		opType = "INTERSECT ALL"
-	case zsqlcompat.SetOperationTypeIntersectDistinct:
+	case ast.SetOperationTypeIntersectDistinct:
 		opType = "INTERSECT"
-	case zsqlcompat.SetOperationTypeExceptAll:
+	case ast.SetOperationTypeExceptAll:
 		opType = "EXCEPT ALL"
-	case zsqlcompat.SetOperationTypeExceptDistinct:
+	case ast.SetOperationTypeExceptDistinct:
 		opType = "EXCEPT"
 	default:
 		opType = "UNKNOWN"
@@ -1019,13 +1018,13 @@ func (n *OrderByScanNode) FormatSQL(ctx context.Context) (string, error) {
 	orderByColumns := []string{}
 	for _, item := range n.node.OrderByItemList() {
 		colName := uniqueColumnName(ctx, item.GetColumnRef().GetColumn())
-		switch item.GetNullOrder() {
-		case zsqlcompat.NullOrderModeNullsFirst:
+		switch ast.NullOrderMode(item.GetNullOrder()) {
+		case ast.NullOrderModeNullsFirst:
 			orderByColumns = append(
 				orderByColumns,
 				fmt.Sprintf("(`%s` IS NOT NULL)", colName),
 			)
-		case zsqlcompat.NullOrderModeNullsLast:
+		case ast.NullOrderModeNullsLast:
 			orderByColumns = append(
 				orderByColumns,
 				fmt.Sprintf("(`%s` IS NULL)", colName),
