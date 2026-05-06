@@ -20,9 +20,9 @@ type NameWithType struct {
 }
 
 func (t *NameWithType) FunctionArgumentType() (*types.FunctionArgumentType, error) {
-	if t.Type.SignatureKind != zsqlcompat.ArgTypeFixed {
+	if t.Type.SignatureKind != types.ArgTypeFixed {
 		arg := types.NewTemplatedFunctionArgumentType(t.Type.SignatureKind)
-		arg.Options = zsqlcompat.NewFunctionArgumentTypeOptions(zsqlcompat.RequiredArgumentCardinality)
+		arg.Options = &types.FunctionArgumentTypeOptions{Cardinality: types.RequiredCardinality}
 		return arg, nil
 	}
 	typ, err := t.Type.ToZetaSQLType()
@@ -30,7 +30,7 @@ func (t *NameWithType) FunctionArgumentType() (*types.FunctionArgumentType, erro
 		return nil, err
 	}
 	arg := types.NewFunctionArgumentType(typ)
-	arg.Options = zsqlcompat.NewFunctionArgumentTypeOptions(zsqlcompat.RequiredArgumentCardinality)
+	arg.Options = &types.FunctionArgumentTypeOptions{Cardinality: types.RequiredCardinality}
 	// TODO(zetasql-wasm-migration): argument name (t.Name) is not currently
 	// propagated; FunctionArgumentTypeOptions in zetasql-wasm only exposes
 	// Cardinality. Add an ArgumentName field upstream when needed.
@@ -58,26 +58,26 @@ func (s *FunctionSpec) SQL() string {
 	args := []string{}
 	for _, arg := range s.Args {
 		t, _ := arg.Type.ToZetaSQLType()
-		args = append(args, fmt.Sprintf("%s %s", arg.Name, zsqlcompat.KindString(t.Kind())))
+		args = append(args, fmt.Sprintf("%s %s", arg.Name, t.Kind()))
 	}
 	retType, _ := s.Return.ToZetaSQLType()
 	return fmt.Sprintf(
 		"CREATE FUNCTION `%s`(%s) RETURNS %s AS (%s)",
 		s.FuncName(),
 		strings.Join(args, ", "),
-		zsqlcompat.KindString(retType.Kind()),
+		retType.Kind(),
 		s.Body,
 	)
 }
 
-func (s *FunctionSpec) CallSQL(ctx context.Context, callNode zsqlcompat.BaseFunctionCall, argValues []string) (string, error) {
+func (s *FunctionSpec) CallSQL(ctx context.Context, callNode ast.BaseFunctionCall, argValues []string) (string, error) {
 	args := callNode.ArgumentList()
 	var body string
 	if s.Body == "" {
 		// templated argument func
 		definedArgs := make([]string, 0, len(args))
 		for idx, arg := range args {
-			argType, err := zsqlcompat.TypeFromProto(zsqlcompat.ExprType(arg))
+			argType, err := types.TypeFromProto(ast.ExprType(arg))
 			if err != nil {
 				return "", err
 			}
@@ -193,9 +193,9 @@ type Type struct {
 }
 
 func (t *Type) FunctionArgumentType() (*types.FunctionArgumentType, error) {
-	if t.SignatureKind != zsqlcompat.ArgTypeFixed {
+	if t.SignatureKind != types.ArgTypeFixed {
 		arg := types.NewTemplatedFunctionArgumentType(t.SignatureKind)
-		arg.Options = zsqlcompat.NewFunctionArgumentTypeOptions(zsqlcompat.RequiredArgumentCardinality)
+		arg.Options = &types.FunctionArgumentTypeOptions{Cardinality: types.RequiredCardinality}
 		return arg, nil
 	}
 	typ, err := t.ToZetaSQLType()
@@ -203,7 +203,7 @@ func (t *Type) FunctionArgumentType() (*types.FunctionArgumentType, error) {
 		return nil, err
 	}
 	arg := types.NewFunctionArgumentType(typ)
-	arg.Options = zsqlcompat.NewFunctionArgumentTypeOptions(zsqlcompat.RequiredArgumentCardinality)
+	arg.Options = &types.FunctionArgumentTypeOptions{Cardinality: types.RequiredCardinality}
 	return arg, nil
 }
 
@@ -266,7 +266,7 @@ func (t *Type) ToZetaSQLType() (types.Type, error) {
 		}
 		return types.NewStructType(fields)
 	}
-	return zsqlcompat.TypeFromKind(t.Kind), nil
+	return types.TypeFromKind(t.Kind), nil
 }
 
 func (t *Type) FormatType() string {
@@ -280,7 +280,7 @@ func (t *Type) FormatType() string {
 	case types.Array:
 		return fmt.Sprintf("ARRAY<%s>", t.ElementType.FormatType())
 	}
-	return zsqlcompat.KindString(t.Kind)
+	return t.Kind.String()
 }
 
 func (s *ColumnSpec) SQLiteSchema() string {
@@ -337,7 +337,7 @@ func (s *ColumnSpec) SQLiteSchema() string {
 }
 
 func newTypeFromFunctionArgumentType(t *types.FunctionArgumentType) *Type {
-	if t.Kind != zsqlcompat.ArgTypeFixed {
+	if t.Kind != types.ArgTypeFixed {
 		return &Type{SignatureKind: t.Kind}
 	}
 	return newType(t.Type)
@@ -357,7 +357,7 @@ func newFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast.CreateFu
 		})
 	}
 
-	returnType, err := zsqlcompat.TypeFromProto(stmt.ReturnType())
+	returnType, err := types.TypeFromProto(stmt.ReturnType())
 	if err != nil {
 		return nil, err
 	}
@@ -429,9 +429,9 @@ func newFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast.CreateFu
 // wrapped SignatureArgumentKind and fixed kinds as the resolved Type.
 func newTypeFromArgumentTypeProto(arg *generated.FunctionArgumentTypeProto) (*Type, error) {
 	if arg.GetKind() != generated.SignatureArgumentKind_ARG_TYPE_FIXED {
-		return &Type{SignatureKind: arg.GetKind()}, nil
+		return &Type{SignatureKind: types.SignatureArgumentKind(arg.GetKind())}, nil
 	}
-	t, err := zsqlcompat.TypeFromProto(arg.GetType())
+	t, err := types.TypeFromProto(arg.GetType())
 	if err != nil {
 		return nil, err
 	}
@@ -444,16 +444,16 @@ func newTypeFromArgumentTypeProto(arg *generated.FunctionArgumentTypeProto) (*Ty
 // SignatureArgumentKind; for fixed arguments it just unwraps the proto type.
 func newTypeFromArgumentTypeProtoByRealType(arg *generated.FunctionArgumentTypeProto, realProto *generated.TypeProto) (*Type, error) {
 	if arg.GetKind() != generated.SignatureArgumentKind_ARG_TYPE_FIXED {
-		realType, err := zsqlcompat.TypeFromProto(realProto)
+		realType, err := types.TypeFromProto(realProto)
 		if err != nil {
 			return nil, err
 		}
 		if realType != nil && realType.IsArray() {
-			return &Type{SignatureKind: zsqlcompat.ArgArrayTypeAny1}, nil
+			return &Type{SignatureKind: types.ArgArrayTypeAny1}, nil
 		}
-		return &Type{SignatureKind: zsqlcompat.ArgTypeAny1}, nil
+		return &Type{SignatureKind: types.ArgTypeAny1}, nil
 	}
-	t, err := zsqlcompat.TypeFromProto(arg.GetType())
+	t, err := types.TypeFromProto(arg.GetType())
 	if err != nil {
 		return nil, err
 	}
@@ -466,7 +466,7 @@ func newTemplatedFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast
 	realStmt := realStmts[0]
 	realSignature := realStmt.Signature()
 	realArguments := realSignature.GetArgument()
-	realReturnType, err := zsqlcompat.TypeFromProto(realSignature.GetReturnType().GetType())
+	realReturnType, err := types.TypeFromProto(realSignature.GetReturnType().GetType())
 	if err != nil {
 		return nil, err
 	}
@@ -475,7 +475,7 @@ func newTemplatedFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast
 
 	allSameResultType := true
 	for _, stmt := range realStmts {
-		t, err := zsqlcompat.TypeFromProto(stmt.Signature().GetReturnType().GetType())
+		t, err := types.TypeFromProto(stmt.Signature().GetReturnType().GetType())
 		if err != nil {
 			return nil, err
 		}
@@ -547,7 +547,7 @@ func newColumnsFromDef(def []*ast.ColumnDefinitionNode) ([]*ColumnSpec, error) {
 			}
 			isNotNull = annotation.NotNull()
 		}
-		colType, err := zsqlcompat.TypeFromProto(columnNode.Type())
+		colType, err := types.TypeFromProto(columnNode.Type())
 		if err != nil {
 			return nil, err
 		}
@@ -564,7 +564,7 @@ func newColumnsFromOutputColumns(def []*ast.OutputColumnNode) ([]*ColumnSpec, er
 	columns := []*ColumnSpec{}
 	for _, columnNode := range def {
 		column := columnNode.Column()
-		colType, err := zsqlcompat.TypeFromProto(column.GetType())
+		colType, err := types.TypeFromProto(column.GetType())
 		if err != nil {
 			return nil, err
 		}
@@ -683,7 +683,7 @@ func newType(t types.Type) *Type {
 		// "TYPE_STRING"; the proper name reconstruction lives on the
 		// fork's *Type.FormatType, so this Name field is only used as
 		// a debugging tag for now.
-		Name:        zsqlcompat.KindString(kind),
+		Name:        kind.String(),
 		Kind:        kind,
 		ElementType: elem,
 		FieldTypes:  fieldTypes,

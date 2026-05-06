@@ -7,7 +7,6 @@ import (
 
 	"github.com/dop251/goja"
 	"github.com/glassmonkey/zetasql-wasm/types"
-	"github.com/goccy/go-zetasqlite/internal/zsqlcompat"
 )
 
 func EVAL_JAVASCRIPT(code string, retType *Type, argNames []string, args []Value) (Value, error) {
@@ -128,5 +127,5 @@ func castJavaScriptValue(t types.Type, v goja.Value) (Value, error) {
 		}
 		return CastValue(t, base)
 	}
-	return nil, fmt.Errorf("unsupported cast %s from JavaScript value", zsqlcompat.KindString(t.Kind()))
+	return nil, fmt.Errorf("unsupported cast %s from JavaScript value", t.Kind())
 }

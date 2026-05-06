@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/glassmonkey/zetasql-wasm"
 	"github.com/glassmonkey/zetasql-wasm/types"
-	"github.com/goccy/go-zetasqlite/internal/zsqlcompat"
 )
 
 const tableSuffixColumnName = "_TABLE_SUFFIX"
@@ -136,7 +136,7 @@ func (t *WildcardTable) SupportsAnonymization() bool {
 	return false
 }
 
-func (t *WildcardTable) TableTypeName(mode zsqlcompat.ProductMode) string {
+func (t *WildcardTable) TableTypeName(mode zetasql.ProductMode) string {
 	return ""
 }
 

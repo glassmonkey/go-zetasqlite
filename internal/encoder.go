@@ -16,7 +16,6 @@ import (
 	"github.com/glassmonkey/zetasql-wasm/types"
 	"github.com/glassmonkey/zetasql-wasm/wasm/generated"
 	"github.com/goccy/go-json"
-	"github.com/goccy/go-zetasqlite/internal/zsqlcompat"
 )
 
 func EncodeNamedValues(v []driver.NamedValue, params []*ast.ParameterNode) ([]sql.NamedArg, error) {
@@ -46,7 +45,7 @@ func EncodeGoValues(v []interface{}, params []*ast.ParameterNode) ([]interface{}
 	}
 	ret := make([]interface{}, 0, len(v))
 	for idx, vv := range v {
-		paramType, err := zsqlcompat.TypeFromProto(params[idx].Type())
+		paramType, err := types.TypeFromProto(params[idx].Type())
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert parameter type: %w", err)
 		}
@@ -454,7 +453,7 @@ func CastValue(t types.Type, v Value) (Value, error) {
 	case types.Geography:
 		return v, nil
 	}
-	return nil, fmt.Errorf("unsupported cast %s value", zsqlcompat.KindString(t.Kind()))
+	return nil, fmt.Errorf("unsupported cast %s value", t.Kind())
 }
 
 func ValueFromGoValue(v interface{}) (Value, error) {
@@ -542,7 +541,7 @@ func valueFromGoReflectValue(v reflect.Value) (Value, error) {
 }
 
 func encodeNamedValue(v driver.NamedValue, param *ast.ParameterNode) (sql.NamedArg, error) {
-	paramType, err := zsqlcompat.TypeFromProto(param.Type())
+	paramType, err := types.TypeFromProto(param.Type())
 	if err != nil {
 		return sql.NamedArg{}, fmt.Errorf("failed to convert parameter type: %w", err)
 	}

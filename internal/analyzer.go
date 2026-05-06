@@ -9,6 +9,7 @@ import (
 	"github.com/glassmonkey/zetasql-wasm"
 	parsed_ast "github.com/glassmonkey/zetasql-wasm/ast"
 	ast "github.com/glassmonkey/zetasql-wasm/resolved_ast"
+	"github.com/glassmonkey/zetasql-wasm/types"
 	"github.com/glassmonkey/zetasql-wasm/wasm/generated"
 	"github.com/goccy/go-zetasqlite/internal/zsqlcompat"
 )
@@ -58,48 +59,48 @@ func (a *Analyzer) Close(ctx context.Context) error {
 
 func newAnalyzerOptions() (*zetasql.AnalyzerOptions, error) {
 	langOpt := zetasql.NewLanguageOptions()
-	langOpt.NameResolutionMode = zsqlcompat.NameResolutionDefault
-	langOpt.ProductMode = zsqlcompat.ProductInternal
-	for _, f := range []zsqlcompat.LanguageFeature{
-		zsqlcompat.FeatureAnalyticFunctions,
-		zsqlcompat.FeatureNamedArguments,
-		zsqlcompat.FeatureNumericType,
-		zsqlcompat.FeatureBignumericType,
-		zsqlcompat.FeatureV13DecimalAlias,
-		zsqlcompat.FeatureCreateTableNotNull,
-		zsqlcompat.FeatureParameterizedTypes,
-		zsqlcompat.FeatureTablesample,
-		zsqlcompat.FeatureTimestampNanos,
-		zsqlcompat.FeatureV11HavingInAggregate,
-		zsqlcompat.FeatureV11NullHandlingModifierInAggregate,
-		zsqlcompat.FeatureV11NullHandlingModifierInAnalytic,
-		zsqlcompat.FeatureV11OrderByCollate,
-		zsqlcompat.FeatureV11SelectStarExceptReplace,
-		zsqlcompat.FeatureV12SafeFunctionCall,
-		zsqlcompat.FeatureJsonType,
-		zsqlcompat.FeatureJsonArrayFunctions,
-		zsqlcompat.FeatureJsonStrictNumberParsing,
-		zsqlcompat.FeatureV13IsDistinct,
-		zsqlcompat.FeatureV13FormatInCast,
-		zsqlcompat.FeatureV13DateArithmetics,
-		zsqlcompat.FeatureV11OrderByInAggregate,
-		zsqlcompat.FeatureV11LimitInAggregate,
-		zsqlcompat.FeatureV13DateTimeConstructors,
-		zsqlcompat.FeatureV13ExtendedDateTimeSignatures,
-		zsqlcompat.FeatureV12CivilTime,
-		zsqlcompat.FeatureV12WeekWithWeekday,
-		zsqlcompat.FeatureIntervalType,
-		zsqlcompat.FeatureGroupByRollup,
-		zsqlcompat.FeatureV13NullsFirstLastInOrderBy,
-		zsqlcompat.FeatureV13Qualify,
-		zsqlcompat.FeatureV13AllowDashesInTableName,
-		zsqlcompat.FeatureGeography,
-		zsqlcompat.FeatureV13ExtendedGeographyParsers,
-		zsqlcompat.FeatureTemplateFunctions,
-		zsqlcompat.FeatureV11WithOnSubquery,
-		zsqlcompat.FeatureV13Pivot,
-		zsqlcompat.FeatureV13Unpivot,
-		zsqlcompat.FeatureCreateTableAsSelectColumnList,
+	langOpt.NameResolutionMode = zetasql.NameResolutionDefault
+	langOpt.ProductMode = zetasql.ProductInternal
+	for _, f := range []zetasql.LanguageFeature{
+		zetasql.FeatureAnalyticFunctions,
+		zetasql.FeatureNamedArguments,
+		zetasql.FeatureNumericType,
+		zetasql.FeatureBignumericType,
+		zetasql.FeatureV13DecimalAlias,
+		zetasql.FeatureCreateTableNotNull,
+		zetasql.FeatureParameterizedTypes,
+		zetasql.FeatureTablesample,
+		zetasql.FeatureTimestampNanos,
+		zetasql.FeatureV11HavingInAggregate,
+		zetasql.FeatureV11NullHandlingModifierInAggregate,
+		zetasql.FeatureV11NullHandlingModifierInAnalytic,
+		zetasql.FeatureV11OrderByCollate,
+		zetasql.FeatureV11SelectStarExceptReplace,
+		zetasql.FeatureV12SafeFunctionCall,
+		zetasql.FeatureJsonType,
+		zetasql.FeatureJsonArrayFunctions,
+		zetasql.FeatureJsonStrictNumberParsing,
+		zetasql.FeatureV13IsDistinct,
+		zetasql.FeatureV13FormatInCast,
+		zetasql.FeatureV13DateArithmetics,
+		zetasql.FeatureV11OrderByInAggregate,
+		zetasql.FeatureV11LimitInAggregate,
+		zetasql.FeatureV13DateTimeConstructors,
+		zetasql.FeatureV13ExtendedDateTimeSignatures,
+		zetasql.FeatureV12CivilTime,
+		zetasql.FeatureV12WeekWithWeekday,
+		zetasql.FeatureIntervalType,
+		zetasql.FeatureGroupByRollup,
+		zetasql.FeatureV13NullsFirstLastInOrderBy,
+		zetasql.FeatureV13Qualify,
+		zetasql.FeatureV13AllowDashesInTableName,
+		zetasql.FeatureGeography,
+		zetasql.FeatureV13ExtendedGeographyParsers,
+		zetasql.FeatureTemplateFunctions,
+		zetasql.FeatureV11WithOnSubquery,
+		zetasql.FeatureV13Pivot,
+		zetasql.FeatureV13Unpivot,
+		zetasql.FeatureCreateTableAsSelectColumnList,
 	} {
 		langOpt.EnableLanguageFeature(f)
 	}
@@ -110,7 +111,7 @@ func newAnalyzerOptions() (*zetasql.AnalyzerOptions, error) {
 	opt := zetasql.NewAnalyzerOptions()
 	opt.AllowUndeclaredParameters = true
 	opt.Language = langOpt
-	pl := zsqlcompat.ParseLocationRecordFullNodeScope
+	pl := zetasql.ParseLocationRecordFullNodeScope
 	opt.ParseLocationRecordType = &pl
 	return opt, nil
 }
@@ -164,7 +165,7 @@ func (a *Analyzer) parseScript(ctx context.Context, query string) ([]parsed_ast.
 	return nil, fmt.Errorf("unexpected root node %T", root)
 }
 
-func (a *Analyzer) getParameterMode(stmt parsed_ast.StatementNode) (zsqlcompat.ParameterMode, error) {
+func (a *Analyzer) getParameterMode(stmt parsed_ast.StatementNode) (zetasql.ParameterMode, error) {
 	var (
 		enabledNamedParameter      bool
 		enabledPositionalParameter bool
@@ -182,12 +183,12 @@ func (a *Analyzer) getParameterMode(stmt parsed_ast.StatementNode) (zsqlcompat.P
 		return nil
 	})
 	if enabledNamedParameter && enabledPositionalParameter {
-		return zsqlcompat.ParameterNone, fmt.Errorf("named parameter and positional parameter cannot be used together")
+		return zetasql.ParameterNone, fmt.Errorf("named parameter and positional parameter cannot be used together")
 	}
 	if enabledPositionalParameter {
-		return zsqlcompat.ParameterPositional, nil
+		return zetasql.ParameterPositional, nil
 	}
-	return zsqlcompat.ParameterNamed, nil
+	return zetasql.ParameterNamed, nil
 }
 
 type StmtActionFunc func() (StmtAction, error)
@@ -230,7 +231,7 @@ func (a *Analyzer) Analyze(ctx context.Context, conn *Conn, query string, args [
 			if err != nil {
 				return nil, err
 			}
-			if mode == zsqlcompat.ParameterPositional {
+			if mode == zetasql.ParameterPositional {
 				args = args[len(action.Args()):]
 			}
 			return action, nil
@@ -437,7 +438,7 @@ func (a *Analyzer) buildScalarTypeFuncFromTemplatedFunc(node *ast.CreateFunction
 	for _, arg := range signature.GetArgument() {
 		typ := realType
 		if arg.GetKind() == generated.SignatureArgumentKind_ARG_TYPE_FIXED {
-			argTyp, err := zsqlcompat.TypeFromProto(arg.GetType())
+			argTyp, err := types.TypeFromProto(arg.GetType())
 			if err == nil && argTyp != nil {
 				typ = newType(argTyp).FormatType()
 			}
@@ -457,7 +458,7 @@ func (a *Analyzer) buildArrayTypeFuncFromTemplatedFunc(node *ast.CreateFunctionS
 	for _, arg := range signature.GetArgument() {
 		typ := fmt.Sprintf("ARRAY<%s>", realType)
 		if arg.GetKind() == generated.SignatureArgumentKind_ARG_TYPE_FIXED {
-			argTyp, err := zsqlcompat.TypeFromProto(arg.GetType())
+			argTyp, err := types.TypeFromProto(arg.GetType())
 			if err == nil && argTyp != nil {
 				typ = newType(argTyp).FormatType()
 			}
@@ -538,7 +539,7 @@ func (a *Analyzer) newDMLStmtAction(ctx context.Context, query string, args []dr
 func (a *Analyzer) newQueryStmtAction(ctx context.Context, query string, args []driver.NamedValue, node *ast.QueryStmtNode) (*QueryStmtAction, error) {
 	outputColumns := []*ColumnSpec{}
 	for _, col := range node.OutputColumnList() {
-		colType, err := zsqlcompat.TypeFromProto(col.Column().GetType())
+		colType, err := types.TypeFromProto(col.Column().GetType())
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert output column type: %w", err)
 		}

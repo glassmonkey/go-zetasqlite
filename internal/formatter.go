@@ -133,7 +133,7 @@ func formatInput(input string) (string, error) {
 	return "", fmt.Errorf("unexpected input pattern: %s", input)
 }
 
-func getFuncNameAndArgs(ctx context.Context, node zsqlcompat.BaseFunctionCall, isWindowFunc bool) (string, []string, error) {
+func getFuncNameAndArgs(ctx context.Context, node ast.BaseFunctionCall, isWindowFunc bool) (string, []string, error) {
 	args := []string{}
 	for _, a := range node.ArgumentList() {
 		arg, err := newNode(a).FormatSQL(ctx)
@@ -442,8 +442,8 @@ func (n *CastNode) FormatSQL(ctx context.Context) (string, error) {
 	if n.node == nil {
 		return "", nil
 	}
-	fromTypeProto := zsqlcompat.ExprType(n.node.Expr())
-	fromTypeT, err := zsqlcompat.TypeFromProto(fromTypeProto)
+	fromTypeProto := ast.ExprType(n.node.Expr())
+	fromTypeT, err := types.TypeFromProto(fromTypeProto)
 	if err != nil {
 		return "", err
 	}
@@ -452,7 +452,7 @@ func (n *CastNode) FormatSQL(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	toTypeT, err := zsqlcompat.TypeFromProto(n.node.Type())
+	toTypeT, err := types.TypeFromProto(n.node.Type())
 	if err != nil {
 		return "", err
 	}
@@ -483,7 +483,7 @@ func (n *MakeStructNode) FormatSQL(ctx context.Context) (string, error) {
 	if n.node == nil {
 		return "", nil
 	}
-	typT, err := zsqlcompat.TypeFromProto(n.node.Type())
+	typT, err := types.TypeFromProto(n.node.Type())
 	if err != nil {
 		return "", err
 	}
@@ -576,10 +576,10 @@ func (n *SubqueryExprNode) FormatSQL(ctx context.Context) (string, error) {
 	switch n.node.SubqueryType() {
 	case zsqlcompat.SubqueryTypeScalar:
 	case zsqlcompat.SubqueryTypeArray:
-		if len(zsqlcompat.ScanColumnList(n.node.Subquery())) == 0 {
+		if len(ast.ScanColumnList(n.node.Subquery())) == 0 {
 			return "", fmt.Errorf("failed to find computed column names for array subquery")
 		}
-		colName := uniqueColumnName(ctx, zsqlcompat.ScanColumnList(n.node.Subquery())[0])
+		colName := uniqueColumnName(ctx, ast.ScanColumnList(n.node.Subquery())[0])
 		return fmt.Sprintf("(SELECT zetasqlite_array(`%s`) FROM (%s))", colName, sql), nil
 	case zsqlcompat.SubqueryTypeExists:
 		return fmt.Sprintf("EXISTS (%s)", sql), nil
@@ -1530,7 +1530,7 @@ func (n *WithEntryNode) FormatSQL(ctx context.Context) (string, error) {
 		return "", err
 	}
 	tableToColumnList := tableNameToColumnListMap(ctx)
-	tableToColumnList[queryName] = zsqlcompat.ScanColumnList(n.node.WithSubquery())
+	tableToColumnList[queryName] = ast.ScanColumnList(n.node.WithSubquery())
 	return fmt.Sprintf("%s AS ( %s )", queryName, subquery), nil
 }
 
