@@ -255,7 +255,7 @@ func (a *Analyzer) context(
 	// reverse-lookup design (see development-plan.md). Drop the second
 	// argument for now.
 	_ = stmt
-	ctx = withNodeMap(ctx, zetasql.NewNodeMap(stmtNode))
+	ctx = withNodeMap(ctx, &nodeMap{resolved: zetasql.NewNodeMap(stmtNode)})
 	return ctx
 }
 

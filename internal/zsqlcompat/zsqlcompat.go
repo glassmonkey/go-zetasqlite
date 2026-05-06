@@ -15,9 +15,11 @@ import (
 // BaseFunctionCall is the common surface that go-zetasql exposed via its
 // ResolvedBaseFunctionCall pseudo-base. zetasql-wasm flattens that out: each
 // of FunctionCallNode / AggregateFunctionCallNode / AnalyticFunctionCallNode
-// declares the same four methods directly. This interface lets fork code
-// continue to share helpers across all three.
+// declares the same four methods directly. The interface also embeds
+// resolved_ast.Node so callers that need the broader walking API (Kind /
+// Child / NumChildren) can pass a BaseFunctionCall through unchanged.
 type BaseFunctionCall interface {
+	resolved_ast.Node
 	ArgumentList() []resolved_ast.ExprNode
 	Function() *generated.FunctionRefProto
 	Signature() *generated.FunctionSignatureProto
@@ -32,6 +34,19 @@ type BaseFunctionCall interface {
 func ExprType(e resolved_ast.ExprNode) *generated.TypeProto {
 	if t, ok := e.(interface{ Type() *generated.TypeProto }); ok {
 		return t.Type()
+	}
+	return nil
+}
+
+// ScanColumnList pulls ColumnList off any resolved ScanNode. The
+// resolved_ast.ScanNode interface itself doesn't expose ColumnList, but
+// every generated *XxxScanNode implements it directly. Returns nil if the
+// concrete type happens not to expose the method.
+func ScanColumnList(s resolved_ast.ScanNode) []*generated.ResolvedColumnProto {
+	if c, ok := s.(interface {
+		ColumnList() []*generated.ResolvedColumnProto
+	}); ok {
+		return c.ColumnList()
 	}
 	return nil
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/glassmonkey/zetasql-wasm/types"
 	"github.com/glassmonkey/zetasql-wasm/wasm/generated"
 	"github.com/goccy/go-json"
+	"github.com/goccy/go-zetasqlite/internal/zsqlcompat"
 )
 
 func EncodeNamedValues(v []driver.NamedValue, params []*ast.ParameterNode) ([]sql.NamedArg, error) {
@@ -45,7 +46,11 @@ func EncodeGoValues(v []interface{}, params []*ast.ParameterNode) ([]interface{}
 	}
 	ret := make([]interface{}, 0, len(v))
 	for idx, vv := range v {
-		value, err := EncodeGoValue(params[idx].Type(), vv)
+		paramType, err := zsqlcompat.TypeFromProto(params[idx].Type())
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert parameter type: %w", err)
+		}
+		value, err := EncodeGoValue(paramType, vv)
 		if err != nil {
 			return nil, err
 		}
@@ -537,7 +542,11 @@ func valueFromGoReflectValue(v reflect.Value) (Value, error) {
 }
 
 func encodeNamedValue(v driver.NamedValue, param *ast.ParameterNode) (sql.NamedArg, error) {
-	value, err := EncodeGoValue(param.Type(), v.Value)
+	paramType, err := zsqlcompat.TypeFromProto(param.Type())
+	if err != nil {
+		return sql.NamedArg{}, fmt.Errorf("failed to convert parameter type: %w", err)
+	}
+	value, err := EncodeGoValue(paramType, v.Value)
 	if err != nil {
 		return sql.NamedArg{}, err
 	}
