@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
+	ast "github.com/glassmonkey/zetasql-wasm/resolved_ast"
 	"github.com/goccy/go-json"
-	ast "github.com/goccy/go-zetasql/resolved_ast"
 )
 
 type WindowFuncOptionType string

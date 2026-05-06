@@ -12,9 +12,10 @@ import (
 	"strings"
 	"time"
 
+	ast "github.com/glassmonkey/zetasql-wasm/resolved_ast"
+	"github.com/glassmonkey/zetasql-wasm/types"
+	"github.com/glassmonkey/zetasql-wasm/wasm/generated"
 	"github.com/goccy/go-json"
-	ast "github.com/goccy/go-zetasql/resolved_ast"
-	"github.com/goccy/go-zetasql/types"
 )
 
 func EncodeNamedValues(v []driver.NamedValue, params []*ast.ParameterNode) ([]sql.NamedArg, error) {
@@ -44,7 +45,11 @@ func EncodeGoValues(v []interface{}, params []*ast.ParameterNode) ([]interface{}
 	}
 	ret := make([]interface{}, 0, len(v))
 	for idx, vv := range v {
-		value, err := EncodeGoValue(params[idx].Type(), vv)
+		paramType, err := types.TypeFromProto(params[idx].Type())
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert parameter type: %w", err)
+		}
+		value, err := EncodeGoValue(paramType, vv)
 		if err != nil {
 			return nil, err
 		}
@@ -132,55 +137,21 @@ func LiteralFromValue(v Value) (string, error) {
 	return fmt.Sprintf("%q", base64.StdEncoding.EncodeToString(b)), nil
 }
 
-func LiteralFromZetaSQLValue(v types.Value) (string, error) {
-	value, err := ValueFromZetaSQLValue(v)
-	if err != nil {
-		return "", err
-	}
-	return LiteralFromValue(value)
+// TODO(zetasql-wasm-migration): LiteralFromZetaSQLValue / ValueFromZetaSQLValue
+// used to consume a go-zetasql runtime types.Value (with rich accessors like
+// IsNull(), SQLLiteral(), ToUnixMicros(), JSONString()). zetasql-wasm exposes
+// only the parsed proto *generated.ValueWithTypeProto and has no runtime
+// evaluator. The conversion from the proto value to the fork's Value type
+// needs a dedicated pass; until then these entry points return an error so
+// the rest of the package compiles.
+func LiteralFromZetaSQLValue(v *generated.ValueWithTypeProto) (string, error) {
+	_ = v
+	return "", fmt.Errorf("LiteralFromZetaSQLValue: zetasql-wasm runtime value bridge not yet implemented")
 }
 
-func ValueFromZetaSQLValue(v types.Value) (Value, error) {
-	if v.IsNull() {
-		return nil, nil
-	}
-	switch v.Type().Kind() {
-	case types.INT32, types.INT64, types.UINT32, types.UINT64:
-		return intValueFromLiteral(v.SQLLiteral(0))
-	case types.BOOL:
-		return boolValueFromLiteral(v.SQLLiteral(0))
-	case types.FLOAT, types.DOUBLE:
-		return floatValueFromLiteral(v.SQLLiteral(0))
-	case types.STRING:
-		return StringValue(v.StringValue()), nil
-	case types.ENUM:
-		return stringValueFromLiteral(v.SQLLiteral(0))
-	case types.BYTES:
-		return bytesValueFromLiteral(v.SQLLiteral(0)), nil
-	case types.DATE:
-		return dateValueFromLiteral(v.ToInt64()), nil
-	case types.DATETIME:
-		return datetimeValueFromLiteral(v.ToPacked64DatetimeMicros()), nil
-	case types.TIME:
-		return timeValueFromLiteral(v.ToPacked64TimeMicros()), nil
-	case types.TIMESTAMP:
-		microsec := v.ToUnixMicros()
-		microSecondsInSecond := int64(time.Second) / int64(time.Microsecond)
-		sec := microsec / microSecondsInSecond
-		remainder := microsec - (sec * microSecondsInSecond)
-		return timestampValueFromLiteral(time.Unix(sec, remainder*int64(time.Microsecond)))
-	case types.NUMERIC, types.BIG_NUMERIC:
-		return numericValueFromLiteral(v.SQLLiteral(0))
-	case types.INTERVAL:
-		return intervalValueFromLiteral(v.SQLLiteral(0))
-	case types.JSON:
-		return jsonValueFromLiteral(v.JSONString())
-	case types.ARRAY:
-		return arrayValueFromLiteral(v)
-	case types.STRUCT:
-		return structValueFromLiteral(v)
-	}
-	return nil, fmt.Errorf("unsupported literal type: %s", v.Type().Kind())
+func ValueFromZetaSQLValue(v *generated.ValueWithTypeProto) (Value, error) {
+	_ = v
+	return nil, fmt.Errorf("ValueFromZetaSQLValue: zetasql-wasm runtime value bridge not yet implemented")
 }
 
 func intValueFromLiteral(lit string) (IntValue, error) {
@@ -321,36 +292,16 @@ func intervalValueFromLiteral(lit string) (*IntervalValue, error) {
 	return parseInterval(intervalLit)
 }
 
-func arrayValueFromLiteral(v types.Value) (*ArrayValue, error) {
-	ret := &ArrayValue{}
-	for i := 0; i < v.NumElements(); i++ {
-		elem := v.Element(i)
-		value, err := ValueFromZetaSQLValue(elem)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert from zetasql value: %w", err)
-		}
-		ret.values = append(ret.values, value)
-	}
-	return ret, nil
+// TODO(zetasql-wasm-migration): array/struct value decoders are part of the
+// runtime-value bridge and stubbed alongside ValueFromZetaSQLValue.
+func arrayValueFromLiteral(v *generated.ValueWithTypeProto) (*ArrayValue, error) {
+	_ = v
+	return nil, fmt.Errorf("arrayValueFromLiteral: zetasql-wasm runtime value bridge not yet implemented")
 }
 
-func structValueFromLiteral(v types.Value) (*StructValue, error) {
-	ret := &StructValue{
-		m: map[string]Value{},
-	}
-	structType := v.Type().AsStruct()
-	for i := 0; i < v.NumFields(); i++ {
-		field := v.Field(i)
-		name := structType.Field(i).Name()
-		value, err := ValueFromZetaSQLValue(field)
-		if err != nil {
-			return nil, err
-		}
-		ret.keys = append(ret.keys, name)
-		ret.values = append(ret.values, value)
-		ret.m[name] = value
-	}
-	return ret, nil
+func structValueFromLiteral(v *generated.ValueWithTypeProto) (*StructValue, error) {
+	_ = v
+	return nil, fmt.Errorf("structValueFromLiteral: zetasql-wasm runtime value bridge not yet implemented")
 }
 
 func CastValue(t types.Type, v Value) (Value, error) {
@@ -358,72 +309,72 @@ func CastValue(t types.Type, v Value) (Value, error) {
 		return nil, nil
 	}
 	switch t.Kind() {
-	case types.INT32, types.INT64, types.UINT32, types.UINT64:
+	case types.Int32, types.Int64, types.Uint32, types.Uint64:
 		i64, err := v.ToInt64()
 		if err != nil {
 			return nil, err
 		}
 		return IntValue(i64), nil
-	case types.BOOL:
+	case types.Bool:
 		b, err := v.ToBool()
 		if err != nil {
 			return nil, err
 		}
 		return BoolValue(b), nil
-	case types.FLOAT, types.DOUBLE:
+	case types.Float, types.Double:
 		f64, err := v.ToFloat64()
 		if err != nil {
 			return nil, err
 		}
 		return FloatValue(f64), nil
-	case types.STRING, types.ENUM:
+	case types.String, types.Enum:
 		s, err := v.ToString()
 		if err != nil {
 			return nil, err
 		}
 		return StringValue(s), nil
-	case types.BYTES:
+	case types.Bytes:
 		b, err := v.ToBytes()
 		if err != nil {
 			return nil, err
 		}
 		return BytesValue(b), nil
-	case types.DATE:
+	case types.Date:
 		t, err := v.ToTime()
 		if err != nil {
 			return nil, err
 		}
 		return DateValue(t), nil
-	case types.DATETIME:
+	case types.Datetime:
 		t, err := v.ToTime()
 		if err != nil {
 			return nil, err
 		}
 		return DatetimeValue(t), nil
-	case types.TIME:
+	case types.Time:
 		t, err := v.ToTime()
 		if err != nil {
 			return nil, err
 		}
 		return TimeValue(t), nil
-	case types.TIMESTAMP:
+	case types.Timestamp:
 		t, err := v.ToTime()
 		if err != nil {
 			return nil, err
 		}
 		return TimestampValue(t), nil
-	case types.INTERVAL:
+	case types.Interval:
 		s, err := v.ToString()
 		if err != nil {
 			return nil, err
 		}
 		return parseInterval(s)
-	case types.ARRAY:
+	case types.Array:
 		array, err := v.ToArray()
 		if err != nil {
 			return nil, err
 		}
-		elemType := t.AsArray().ElementType()
+		elemType := t.AsArray().ElementType
 		ret := &ArrayValue{}
 		for _, value := range array.values {
 			casted, err := CastValue(elemType, value)
@@ -433,7 +384,7 @@ func CastValue(t types.Type, v Value) (Value, error) {
 			ret.values = append(ret.values, casted)
 		}
 		return ret, nil
-	case types.STRUCT:
+	case types.Struct:
 		if array, ok := v.(*ArrayValue); ok {
 			ret := &StructValue{m: map[string]Value{}}
 			for _, value := range array.values {
@@ -464,15 +415,15 @@ func CastValue(t types.Type, v Value) (Value, error) {
 			return s, nil
 		}
 		ret := &StructValue{m: s.m}
-		for i := 0; i < typ.NumFields(); i++ {
-			key := typ.Field(i).Name()
+		for i := 0; i < len(typ.Fields); i++ {
+			key := typ.Fields[i].Name
 			value, exists := s.m[key]
 			if !exists {
 				ret.keys = append(ret.keys, key)
 				ret.values = append(ret.values, nil)
 				continue
 			}
-			casted, err := CastValue(typ.Field(i).Type(), value)
+			casted, err := CastValue(typ.Fields[i].Type, value)
 			if err != nil {
 				return nil, err
 			}
@@ -481,25 +432,25 @@ func CastValue(t types.Type, v Value) (Value, error) {
 			ret.m[key] = casted
 		}
 		return ret, nil
-	case types.NUMERIC:
+	case types.Numeric:
 		r, err := v.ToRat()
 		if err != nil {
 			return nil, err
 		}
 		return &NumericValue{Rat: r}, nil
-	case types.BIG_NUMERIC:
+	case types.BigNumeric:
 		r, err := v.ToRat()
 		if err != nil {
 			return nil, err
 		}
 		return &NumericValue{Rat: r, isBigNumeric: true}, nil
-	case types.JSON:
+	case types.Json:
 		j, err := v.ToJSON()
 		if err != nil {
 			return nil, err
 		}
 		return JsonValue(j), nil
-	case types.GEOGRAPHY:
+	case types.Geography:
 		return v, nil
 	}
 	return nil, fmt.Errorf("unsupported cast %s value", t.Kind())
@@ -590,7 +541,11 @@ func valueFromGoReflectValue(v reflect.Value) (Value, error) {
 }
 
 func encodeNamedValue(v driver.NamedValue, param *ast.ParameterNode) (sql.NamedArg, error) {
-	value, err := EncodeGoValue(param.Type(), v.Value)
+	paramType, err := types.TypeFromProto(param.Type())
+	if err != nil {
+		return sql.NamedArg{}, fmt.Errorf("failed to convert parameter type: %w", err)
+	}
+	value, err := EncodeGoValue(paramType, v.Value)
 	if err != nil {
 		return sql.NamedArg{}, err
 	}

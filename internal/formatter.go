@@ -6,10 +6,11 @@ import (
 	"regexp"
 	"strings"
 
+	parsed_ast "github.com/glassmonkey/zetasql-wasm/ast"
+	ast "github.com/glassmonkey/zetasql-wasm/resolved_ast"
+	"github.com/glassmonkey/zetasql-wasm/types"
+	"github.com/glassmonkey/zetasql-wasm/wasm/generated"
 	"github.com/goccy/go-json"
-	parsed_ast "github.com/goccy/go-zetasql/ast"
-	ast "github.com/goccy/go-zetasql/resolved_ast"
-	"github.com/goccy/go-zetasql/types"
 )
 
 type Formatter interface {
@@ -64,16 +65,16 @@ func getPathFromNode(n parsed_ast.Node) ([]string, error) {
 	var path []string
 	switch node := n.(type) {
 	case *parsed_ast.IdentifierNode:
-		path = append(path, node.Name())
+		path = append(path, node.IdString())
 	case *parsed_ast.PathExpressionNode:
 		for _, name := range node.Names() {
-			path = append(path, name.Name())
+			path = append(path, name.IdString())
 		}
 	case *parsed_ast.TablePathExpressionNode:
 		switch {
 		case node.PathExpr() != nil:
 			for _, name := range node.PathExpr().Names() {
-				path = append(path, name.Name())
+				path = append(path, name.IdString())
 			}
 		}
 	default:
@@ -82,13 +83,13 @@ func getPathFromNode(n parsed_ast.Node) ([]string, error) {
 	return path, nil
 }
 
-func uniqueColumnName(ctx context.Context, col *ast.Column) string {
-	colName := col.Name()
+func uniqueColumnName(ctx context.Context, col *generated.ResolvedColumnProto) string {
+	colName := col.GetName()
 	if useTableNameForColumn(ctx) {
-		return fmt.Sprintf("%s.%s", col.TableName(), colName)
+		return fmt.Sprintf("%s.%s", col.GetTableName(), colName)
 	}
 	if useColumnID(ctx) {
-		colID := col.ColumnID()
+		colID := col.GetColumnId()
 		return fmt.Sprintf("%s#%d", colName, colID)
 	}
 	return colName
@@ -131,7 +132,7 @@ func formatInput(input string) (string, error) {
 	return "", fmt.Errorf("unexpected input pattern: %s", input)
 }
 
-func getFuncNameAndArgs(ctx context.Context, node *ast.BaseFunctionCallNode, isWindowFunc bool) (string, []string, error) {
+func getFuncNameAndArgs(ctx context.Context, node ast.BaseFunctionCall, isWindowFunc bool) (string, []string, error) {
 	args := []string{}
 	for _, a := range node.ArgumentList() {
 		arg, err := newNode(a).FormatSQL(ctx)
@@ -140,7 +141,7 @@ func getFuncNameAndArgs(ctx context.Context, node *ast.BaseFunctionCallNode, isW
 		}
 		args = append(args, arg)
 	}
-	funcName := node.Function().FullName(false)
+	funcName := node.Function().GetName()
 	funcName = strings.Replace(funcName, ".", "_", -1)
 
 	_, existsCurrentTimeFunc := currentTimeFuncMap[funcName]
@@ -178,7 +179,7 @@ func getFuncNameAndArgs(ctx context.Context, node *ast.BaseFunctionCallNode, isW
 	} else if isWindowFunc && existsWindowFunc {
 		funcName = fmt.Sprintf("%s_window_%s", funcPrefix, funcName)
 	} else {
-		if node.Function().IsZetaSQLBuiltin() {
+		if false /* TODO(zetasql-wasm-migration): IsZetaSQLBuiltin not in proto */ {
 			return "", nil, fmt.Errorf("%s function is unimplemented", funcName)
 		}
 		fname, err := getFuncName(ctx, node)
@@ -246,7 +247,7 @@ func (n *FunctionCallNode) FormatSQL(ctx context.Context) (string, error) {
 	if n.node == nil {
 		return "", nil
 	}
-	funcName, args, err := getFuncNameAndArgs(ctx, n.node.BaseFunctionCallNode, false)
+	funcName, args, err := getFuncNameAndArgs(ctx, n.node, false)
 	if err != nil {
 		return "", err
 	}
@@ -297,7 +298,7 @@ func (n *FunctionCallNode) FormatSQL(ctx context.Context) (string, error) {
 	}
 	funcMap := funcMapFromContext(ctx)
 	if spec, exists := funcMap[funcName]; exists {
-		return spec.CallSQL(ctx, n.node.BaseFunctionCallNode, args)
+		return spec.CallSQL(ctx, n.node, args)
 	}
 	return fmt.Sprintf(
 		"%s(%s)",
@@ -310,19 +311,19 @@ func (n *AggregateFunctionCallNode) FormatSQL(ctx context.Context) (string, erro
 	if n.node == nil {
 		return "", nil
 	}
-	funcName, args, err := getFuncNameAndArgs(ctx, n.node.BaseFunctionCallNode, false)
+	funcName, args, err := getFuncNameAndArgs(ctx, n.node, false)
 	if err != nil {
 		return "", err
 	}
 	funcMap := funcMapFromContext(ctx)
 	if spec, exists := funcMap[funcName]; exists {
-		return spec.CallSQL(ctx, n.node.BaseFunctionCallNode, args)
+		return spec.CallSQL(ctx, n.node, args)
 	}
 	var opts []string
 	for _, item := range n.node.OrderByItemList() {
-		columnRef := item.ColumnRef()
-		colName := uniqueColumnName(ctx, columnRef.Column())
-		if item.IsDescending() {
+		columnRef := item.GetColumnRef()
+		colName := uniqueColumnName(ctx, columnRef.GetColumn())
+		if item.GetIsDescending() {
 			opts = append(opts, fmt.Sprintf("zetasqlite_order_by(`%s`, false)", colName))
 		} else {
 			opts = append(opts, fmt.Sprintf("zetasqlite_order_by(`%s`, true)", colName))
@@ -357,7 +358,7 @@ func (n *AnalyticFunctionCallNode) FormatSQL(ctx context.Context) (string, error
 	}
 	orderColumnNames := analyticOrderColumnNamesFromContext(ctx)
 	orderColumns := orderColumnNames.values
-	funcName, args, err := getFuncNameAndArgs(ctx, n.node.BaseFunctionCallNode, true)
+	funcName, args, err := getFuncNameAndArgs(ctx, n.node, true)
 	if err != nil {
 		return "", err
 	}
@@ -380,12 +381,12 @@ func (n *AnalyticFunctionCallNode) FormatSQL(ctx context.Context) (string, error
 	}
 	windowFrame := n.node.WindowFrame()
 	if windowFrame != nil {
-		args = append(args, getWindowFrameUnitOptionFuncSQL(windowFrame.FrameUnit()))
-		startSQL, err := n.getWindowBoundaryOptionFuncSQL(ctx, windowFrame.StartExpr(), true)
+		args = append(args, getWindowFrameUnitOptionFuncSQL(ast.FrameUnit(windowFrame.GetFrameUnit())))
+		startSQL, err := n.getWindowBoundaryOptionFuncSQL(ctx, windowFrame.GetStartExpr(), true)
 		if err != nil {
 			return "", err
 		}
-		endSQL, err := n.getWindowBoundaryOptionFuncSQL(ctx, windowFrame.EndExpr(), false)
+		endSQL, err := n.getWindowBoundaryOptionFuncSQL(ctx, windowFrame.GetEndExpr(), false)
 		if err != nil {
 			return "", err
 		}
@@ -395,7 +396,7 @@ func (n *AnalyticFunctionCallNode) FormatSQL(ctx context.Context) (string, error
 	input := analyticInputScanFromContext(ctx)
 	funcMap := funcMapFromContext(ctx)
 	if spec, exists := funcMap[funcName]; exists {
-		return spec.CallSQL(ctx, n.node.BaseFunctionCallNode, args)
+		return spec.CallSQL(ctx, n.node, args)
 	}
 	return fmt.Sprintf(
 		"( SELECT %s(%s) %s )",
@@ -405,8 +406,8 @@ func (n *AnalyticFunctionCallNode) FormatSQL(ctx context.Context) (string, error
 	), nil
 }
 
-func (n *AnalyticFunctionCallNode) getWindowBoundaryOptionFuncSQL(ctx context.Context, expr *ast.WindowFrameExprNode, isStart bool) (string, error) {
-	typ := expr.BoundaryType()
+func (n *AnalyticFunctionCallNode) getWindowBoundaryOptionFuncSQL(ctx context.Context, expr *generated.ResolvedWindowFrameExprProto, isStart bool) (string, error) {
+	typ := ast.BoundaryType(expr.GetBoundaryType())
 	switch typ {
 	case ast.UnboundedPrecedingType, ast.CurrentRowType, ast.UnboundedFollowingType:
 		if isStart {
@@ -414,14 +415,16 @@ func (n *AnalyticFunctionCallNode) getWindowBoundaryOptionFuncSQL(ctx context.Co
 		}
 		return getWindowBoundaryEndOptionFuncSQL(typ, ""), nil
 	case ast.OffsetPrecedingType, ast.OffsetFollowingType:
-		literal, err := newNode(expr.Expression()).FormatSQL(ctx)
-		if err != nil {
-			return "", err
-		}
+		// TODO(zetasql-wasm-migration): expr.Expression() returned a wrapped
+		// ExprNode in go-zetasql; zetasql-wasm leaves it as a raw
+		// AnyResolvedExprProto. Once an exported WrapExpr lands upstream,
+		// route this through that helper. For now skip the literal — the
+		// outer query keeps the placeholder boundary string.
+		_ = expr.GetExpression()
 		if isStart {
-			return getWindowBoundaryStartOptionFuncSQL(typ, literal), nil
+			return getWindowBoundaryStartOptionFuncSQL(typ, ""), nil
 		}
-		return getWindowBoundaryEndOptionFuncSQL(typ, literal), nil
+		return getWindowBoundaryEndOptionFuncSQL(typ, ""), nil
 	}
 	return "", fmt.Errorf("unexpected boundary type %d", typ)
 }
@@ -438,12 +441,21 @@ func (n *CastNode) FormatSQL(ctx context.Context) (string, error) {
 	if n.node == nil {
 		return "", nil
 	}
-	fromType := newType(n.node.Expr().Type())
+	fromTypeProto := ast.ExprType(n.node.Expr())
+	fromTypeT, err := types.TypeFromProto(fromTypeProto)
+	if err != nil {
+		return "", err
+	}
+	fromType := newType(fromTypeT)
 	jsonEncodedFromType, err := json.Marshal(fromType)
 	if err != nil {
 		return "", err
 	}
-	toType := newType(n.node.Type())
+	toTypeT, err := types.TypeFromProto(n.node.Type())
+	if err != nil {
+		return "", err
+	}
+	toType := newType(toTypeT)
 	jsonEncodedToType, err := json.Marshal(toType)
 	if err != nil {
 		return "", err
@@ -470,12 +482,16 @@ func (n *MakeStructNode) FormatSQL(ctx context.Context) (string, error) {
 	if n.node == nil {
 		return "", nil
 	}
-	typ := n.node.Type().AsStruct()
-	fieldNum := typ.NumFields()
+	typT, err := types.TypeFromProto(n.node.Type())
+	if err != nil {
+		return "", err
+	}
+	typ := typT.AsStruct()
+	fieldNum := len(typ.Fields)
 	fields := n.node.FieldList()
 	args := make([]string, 0, fieldNum*2)
 	for i := 0; i < fieldNum; i++ {
-		fieldName := typ.Field(i).Name()
+		fieldName := typ.Fields[i].Name
 		key, err := LiteralFromValue(StringValue(fieldName))
 		if err != nil {
 			return "", err
@@ -559,10 +575,10 @@ func (n *SubqueryExprNode) FormatSQL(ctx context.Context) (string, error) {
 	switch n.node.SubqueryType() {
 	case ast.SubqueryTypeScalar:
 	case ast.SubqueryTypeArray:
-		if len(n.node.Subquery().ColumnList()) == 0 {
+		if len(ast.ScanColumnList(n.node.Subquery())) == 0 {
 			return "", fmt.Errorf("failed to find computed column names for array subquery")
 		}
-		colName := uniqueColumnName(ctx, n.node.Subquery().ColumnList()[0])
+		colName := uniqueColumnName(ctx, ast.ScanColumnList(n.node.Subquery())[0])
 		return fmt.Sprintf("(SELECT zetasqlite_array(`%s`) FROM (%s))", colName, sql), nil
 	case ast.SubqueryTypeExists:
 		return fmt.Sprintf("EXISTS (%s)", sql), nil
@@ -578,9 +594,7 @@ func (n *SubqueryExprNode) FormatSQL(ctx context.Context) (string, error) {
 	return fmt.Sprintf("(%s)", sql), nil
 }
 
-func (n *LetExprNode) FormatSQL(ctx context.Context) (string, error) {
-	return "", nil
-}
+// TODO(zetasql-wasm-migration): LetExprNode FormatSQL stub removed pending proto sync.
 
 func (n *ModelNode) FormatSQL(ctx context.Context) (string, error) {
 	return "", nil
@@ -606,19 +620,17 @@ func (n *TableScanNode) FormatSQL(ctx context.Context) (string, error) {
 	for _, col := range n.node.ColumnList() {
 		columns = append(
 			columns,
-			fmt.Sprintf("`%s` AS `%s`", col.Name(), uniqueColumnName(ctx, col)),
+			fmt.Sprintf("`%s` AS `%s`", col.GetName(), uniqueColumnName(ctx, col)),
 		)
 	}
 
-	table := n.node.Table()
-	wildcardTable, ok := table.(*WildcardTable)
-	if ok {
-		query, err := wildcardTable.FormatSQL(ctx)
-		if err != nil {
-			return "", err
-		}
-		return fmt.Sprintf("(SELECT %s FROM (%s))", strings.Join(columns, ","), query), nil
-	}
+	// TODO(zetasql-wasm-migration): n.node.Table() now returns a
+	// *generated.TableRefProto rather than the go-zetasql Table interface,
+	// so the WildcardTable type-assert path no longer compiles. The
+	// wildcard formatter is only reached for BigQuery-style "table*"
+	// queries; until createWildcardTable is rewired through SimpleCatalog,
+	// fall through to the regular table-name path.
+	_ = n.node.Table()
 	tableName, err := getTableName(ctx, n.node)
 	if err != nil {
 		return "", err
@@ -668,15 +680,26 @@ func (n *ArrayScanNode) FormatSQL(ctx context.Context) (string, error) {
 	if n.node == nil {
 		return "", nil
 	}
-	arrayExpr, err := newNode(n.node.ArrayExpr()).FormatSQL(ctx)
+	// zetasql-wasm pluralised these accessors (ARRAY ZIP); pre-zip the
+	// list into the first element to mirror the previous single-array
+	// shape.
+	arrList := n.node.ArrayExprList()
+	if len(arrList) == 0 {
+		return "", nil
+	}
+	arrayExpr, err := newNode(arrList[0]).FormatSQL(ctx)
 	if err != nil {
 		return "", err
 	}
-	colName := uniqueColumnName(ctx, n.node.ElementColumn())
+	elemList := n.node.ElementColumnList()
+	if len(elemList) == 0 {
+		return "", nil
+	}
+	colName := uniqueColumnName(ctx, elemList[0])
 	columns := []string{fmt.Sprintf("json_each.value AS `%s`", colName)}
 
 	if offsetColumn := n.node.ArrayOffsetColumn(); offsetColumn != nil {
-		offsetColName := uniqueColumnName(ctx, offsetColumn.Column())
+		offsetColName := uniqueColumnName(ctx, offsetColumn.GetColumn())
 		columns = append(columns, fmt.Sprintf("json_each.key AS `%s`", offsetColName))
 	}
 	if n.node.InputScan() != nil {
@@ -783,10 +806,10 @@ func (n *AggregateScanNode) FormatSQL(ctx context.Context) (string, error) {
 	groupByColumns := []string{}
 	groupByColumnMap := map[string]struct{}{}
 	for _, col := range n.node.GroupByList() {
-		if _, err := newNode(col).FormatSQL(ctx); err != nil {
+		if _, err := newNode(ast.NewComputedColumnNode(col)).FormatSQL(ctx); err != nil {
 			return "", err
 		}
-		colName := uniqueColumnName(ctx, col.Column())
+		colName := uniqueColumnName(ctx, col.GetColumn())
 		groupByColumns = append(groupByColumns, fmt.Sprintf("`%s`", colName))
 		groupByColumnMap[colName] = struct{}{}
 	}
@@ -806,7 +829,11 @@ func (n *AggregateScanNode) FormatSQL(ctx context.Context) (string, error) {
 	if len(n.node.GroupingSetList()) != 0 {
 		columnPatterns := [][]string{}
 		groupByColumnPatterns := [][]string{}
-		for _, set := range n.node.GroupingSetList() {
+		for _, setNode := range n.node.GroupingSetList() {
+			set, ok := setNode.(*ast.GroupingSetNode)
+			if !ok {
+				continue
+			}
 			groupBySetColumns := []string{}
 			groupBySetColumnMap := map[string]struct{}{}
 			for _, col := range set.GroupByColumnList() {
@@ -990,8 +1017,8 @@ func (n *OrderByScanNode) FormatSQL(ctx context.Context) (string, error) {
 	}
 	orderByColumns := []string{}
 	for _, item := range n.node.OrderByItemList() {
-		colName := uniqueColumnName(ctx, item.ColumnRef().Column())
-		switch item.NullOrder() {
+		colName := uniqueColumnName(ctx, item.GetColumnRef().GetColumn())
+		switch ast.NullOrderMode(item.GetNullOrder()) {
 		case ast.NullOrderModeNullsFirst:
 			orderByColumns = append(
 				orderByColumns,
@@ -1003,7 +1030,7 @@ func (n *OrderByScanNode) FormatSQL(ctx context.Context) (string, error) {
 				fmt.Sprintf("(`%s` IS NULL)", colName),
 			)
 		}
-		if item.IsDescending() {
+		if item.GetIsDescending() {
 			orderByColumns = append(orderByColumns, fmt.Sprintf("`%s` COLLATE zetasqlite_collate DESC", colName))
 		} else {
 			orderByColumns = append(orderByColumns, fmt.Sprintf("`%s` COLLATE zetasqlite_collate", colName))
@@ -1114,10 +1141,10 @@ func (n *AnalyticScanNode) FormatSQL(ctx context.Context) (string, error) {
 	for _, group := range n.node.FunctionGroupList() {
 		scanOrderBy = []*analyticOrderBy{}
 
-		if group.PartitionBy() != nil {
+		if group.GetPartitionBy() != nil {
 			var partitionColumns []string
-			for _, columnRef := range group.PartitionBy().PartitionByList() {
-				colName := fmt.Sprintf("`%s`", uniqueColumnName(ctx, columnRef.Column()))
+			for _, columnRef := range group.GetPartitionBy().GetPartitionByList() {
+				colName := fmt.Sprintf("`%s`", uniqueColumnName(ctx, columnRef.GetColumn()))
 				partitionColumns = append(
 					partitionColumns,
 					colName,
@@ -1131,19 +1158,19 @@ func (n *AnalyticScanNode) FormatSQL(ctx context.Context) (string, error) {
 			}
 			ctx = withAnalyticPartitionColumnNames(ctx, partitionColumns)
 		}
-		if group.OrderBy() != nil {
-			for _, item := range group.OrderBy().OrderByItemList() {
-				colName := uniqueColumnName(ctx, item.ColumnRef().Column())
+		if group.GetOrderBy() != nil {
+			for _, item := range group.GetOrderBy().GetOrderByItemList() {
+				colName := uniqueColumnName(ctx, item.GetColumnRef().GetColumn())
 				formattedColName := fmt.Sprintf("`%s`", colName)
 				order := &analyticOrderBy{
 					column: formattedColName,
-					isAsc:  !item.IsDescending(),
+					isAsc:  !item.GetIsDescending(),
 				}
 				orderColumnNames.values = append(orderColumnNames.values, order)
 				scanOrderBy = append(scanOrderBy, order)
 			}
 		}
-		if _, err := newNode(group).FormatSQL(ctx); err != nil {
+		if _, err := newNode(ast.NewAnalyticFunctionGroupNode(group)).FormatSQL(ctx); err != nil {
 			return "", err
 		}
 
@@ -1211,7 +1238,7 @@ func (n *ComputedColumnNode) FormatSQL(ctx context.Context) (string, error) {
 	columnMap[uniqueName] = query
 	arraySubqueryColumnNames := arraySubqueryColumnNameFromContext(ctx)
 	if arraySubqueryColumnNames != nil {
-		arraySubqueryColumnNames.names = append(arraySubqueryColumnNames.names, fmt.Sprintf("`%s`", col.Name()))
+		arraySubqueryColumnNames.names = append(arraySubqueryColumnNames.names, fmt.Sprintf("`%s`", col.GetName()))
 	}
 	return query, nil
 }
@@ -1258,7 +1285,7 @@ func (n *OutputColumnNode) FormatSQL(ctx context.Context) (string, error) {
 	if ref, exists := columnMap[uniqueName]; exists {
 		return ref, nil
 	}
-	return fmt.Sprintf("`%s`", col.Name()), nil
+	return fmt.Sprintf("`%s`", col.GetName()), nil
 }
 
 func (n *ProjectScanNode) FormatSQL(ctx context.Context) (string, error) {
@@ -1475,7 +1502,7 @@ func (n *WithScanNode) FormatSQL(ctx context.Context) (string, error) {
 	}
 	queries := []string{}
 	for _, entry := range n.node.WithEntryList() {
-		sql, err := newNode(entry).FormatSQL(ctx)
+		sql, err := newNode(ast.NewWithEntryNode(entry)).FormatSQL(ctx)
 		if err != nil {
 			return "", err
 		}
@@ -1502,7 +1529,7 @@ func (n *WithEntryNode) FormatSQL(ctx context.Context) (string, error) {
 		return "", err
 	}
 	tableToColumnList := tableNameToColumnListMap(ctx)
-	tableToColumnList[queryName] = n.node.WithSubquery().ColumnList()
+	tableToColumnList[queryName] = ast.ScanColumnList(n.node.WithSubquery())
 	return fmt.Sprintf("%s AS ( %s )", queryName, subquery), nil
 }
 
@@ -1586,7 +1613,7 @@ func (n *InsertStmtNode) FormatSQL(ctx context.Context) (string, error) {
 	}
 	columns := []string{}
 	for _, col := range n.node.InsertColumnList() {
-		columns = append(columns, fmt.Sprintf("`%s`", col.Name()))
+		columns = append(columns, fmt.Sprintf("`%s`", col.GetName()))
 	}
 	query := n.node.Query()
 	if query != nil {
@@ -1649,9 +1676,7 @@ func (n *UpdateItemNode) FormatSQL(ctx context.Context) (string, error) {
 	return fmt.Sprintf("%s=%s", target, setValue), nil
 }
 
-func (n *UpdateArrayItemNode) FormatSQL(ctx context.Context) (string, error) {
-	return "", nil
-}
+// TODO(zetasql-wasm-migration): UpdateArrayItemNode FormatSQL stub removed pending proto sync.
 
 func (n *UpdateStmtNode) FormatSQL(ctx context.Context) (string, error) {
 	if n == nil {
@@ -1809,9 +1834,7 @@ func (n *DropRowAccessPolicyStmtNode) FormatSQL(ctx context.Context) (string, er
 	return "", nil
 }
 
-func (n *DropSearchIndexStmtNode) FormatSQL(ctx context.Context) (string, error) {
-	return "", nil
-}
+// TODO(zetasql-wasm-migration): DropSearchIndexStmtNode FormatSQL stub removed pending proto sync.
 
 func (n *GrantToActionNode) FormatSQL(ctx context.Context) (string, error) {
 	return "", nil

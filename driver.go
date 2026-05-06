@@ -86,7 +86,7 @@ func newZetaSQLiteConn(db *sql.DB, catalog *internal.Catalog) (*ZetaSQLiteConn, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get sqlite3 connection: %w", err)
 	}
-	analyzer, err := internal.NewAnalyzer(catalog)
+	analyzer, err := internal.NewAnalyzer(context.Background(), catalog)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create analyzer: %w", err)
 	}

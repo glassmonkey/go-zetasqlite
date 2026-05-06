@@ -7,9 +7,10 @@ import (
 	"strings"
 	"time"
 
+	ast "github.com/glassmonkey/zetasql-wasm/resolved_ast"
+	"github.com/glassmonkey/zetasql-wasm/types"
+	"github.com/glassmonkey/zetasql-wasm/wasm/generated"
 	"github.com/goccy/go-json"
-	ast "github.com/goccy/go-zetasql/resolved_ast"
-	"github.com/goccy/go-zetasql/types"
 )
 
 type NameWithType struct {
@@ -19,18 +20,21 @@ type NameWithType struct {
 
 func (t *NameWithType) FunctionArgumentType() (*types.FunctionArgumentType, error) {
 	if t.Type.SignatureKind != types.ArgTypeFixed {
-		return types.NewTemplatedFunctionArgumentType(
-			t.Type.SignatureKind,
-			types.NewFunctionArgumentTypeOptions(types.RequiredArgumentCardinality),
-		), nil
+		arg := types.NewTemplatedFunctionArgumentType(t.Type.SignatureKind)
+		arg.Options = &types.FunctionArgumentTypeOptions{Cardinality: types.RequiredCardinality}
+		return arg, nil
 	}
 	typ, err := t.Type.ToZetaSQLType()
 	if err != nil {
 		return nil, err
 	}
-	opt := types.NewFunctionArgumentTypeOptions(types.RequiredArgumentCardinality)
-	opt.SetArgumentName(t.Name)
-	return types.NewFunctionArgumentType(typ, opt), nil
+	arg := types.NewFunctionArgumentType(typ)
+	arg.Options = &types.FunctionArgumentTypeOptions{Cardinality: types.RequiredCardinality}
+	// TODO(zetasql-wasm-migration): argument name (t.Name) is not currently
+	// propagated; FunctionArgumentTypeOptions in zetasql-wasm only exposes
+	// Cardinality. Add an ArgumentName field upstream when needed.
+	_ = t.Name
+	return arg, nil
 }
 
 type FunctionSpec struct {
@@ -65,14 +69,18 @@ func (s *FunctionSpec) SQL() string {
 	)
 }
 
-func (s *FunctionSpec) CallSQL(ctx context.Context, callNode *ast.BaseFunctionCallNode, argValues []string) (string, error) {
+func (s *FunctionSpec) CallSQL(ctx context.Context, callNode ast.BaseFunctionCall, argValues []string) (string, error) {
 	args := callNode.ArgumentList()
 	var body string
 	if s.Body == "" {
 		// templated argument func
 		definedArgs := make([]string, 0, len(args))
 		for idx, arg := range args {
-			typeName := newType(arg.Type()).FormatType()
+			argType, err := types.TypeFromProto(ast.ExprType(arg))
+			if err != nil {
+				return "", err
+			}
+			typeName := newType(argType).FormatType()
 			definedArgs = append(
 				definedArgs,
 				fmt.Sprintf("%s %s", s.Args[idx].Name, typeName),
@@ -177,7 +185,7 @@ type ColumnSpec struct {
 
 type Type struct {
 	Name          string                      `json:"name"`
-	Kind          int                         `json:"kind"`
+	Kind          types.TypeKind              `json:"kind"`
 	SignatureKind types.SignatureArgumentKind `json:"signatureKind"`
 	ElementType   *Type                       `json:"elementType"`
 	FieldTypes    []*NameWithType             `json:"fieldTypes"`
@@ -185,31 +193,31 @@ type Type struct {
 
 func (t *Type) FunctionArgumentType() (*types.FunctionArgumentType, error) {
 	if t.SignatureKind != types.ArgTypeFixed {
-		return types.NewTemplatedFunctionArgumentType(
-			t.SignatureKind,
-			types.NewFunctionArgumentTypeOptions(types.RequiredArgumentCardinality),
-		), nil
+		arg := types.NewTemplatedFunctionArgumentType(t.SignatureKind)
+		arg.Options = &types.FunctionArgumentTypeOptions{Cardinality: types.RequiredCardinality}
+		return arg, nil
 	}
 	typ, err := t.ToZetaSQLType()
 	if err != nil {
 		return nil, err
 	}
-	opt := types.NewFunctionArgumentTypeOptions(types.RequiredArgumentCardinality)
-	return types.NewFunctionArgumentType(typ, opt), nil
+	arg := types.NewFunctionArgumentType(typ)
+	arg.Options = &types.FunctionArgumentTypeOptions{Cardinality: types.RequiredCardinality}
+	return arg, nil
 }
 
 func (t *Type) IsArray() bool {
-	return t.Kind == types.ARRAY
+	return t.Kind == types.Array
 }
 
 func (t *Type) IsStruct() bool {
-	return t.Kind == types.STRUCT
+	return t.Kind == types.Struct
 }
 
 func (t *Type) AvailableAutoIndex() bool {
 	switch t.Kind {
-	case types.BYTES, types.JSON, types.ARRAY, types.STRUCT,
-		types.GEOGRAPHY, types.PROTO, types.EXTENDED:
+	case types.Bytes, types.Json, types.Array, types.Struct,
+		types.Geography, types.Proto, types.Extended:
 		return false
 	}
 	return true
@@ -217,22 +225,22 @@ func (t *Type) AvailableAutoIndex() bool {
 
 func (t *Type) GoReflectType() (reflect.Type, error) {
 	switch t.Kind {
-	case types.INT32, types.INT64, types.UINT32, types.UINT64:
+	case types.Int32, types.Int64, types.Uint32, types.Uint64:
 		return reflect.TypeOf(int64(0)), nil
-	case types.BOOL:
+	case types.Bool:
 		return reflect.TypeOf(false), nil
-	case types.FLOAT, types.DOUBLE:
+	case types.Float, types.Double:
 		return reflect.TypeOf(float64(0)), nil
-	case types.BYTES, types.STRING, types.NUMERIC, types.BIG_NUMERIC,
-		types.DATE, types.DATETIME, types.TIME, types.TIMESTAMP, types.INTERVAL, types.JSON:
+	case types.Bytes, types.String, types.Numeric, types.BigNumeric,
+		types.Date, types.Datetime, types.Time, types.Timestamp, types.Interval, types.Json:
 		return reflect.TypeOf(""), nil
-	case types.ARRAY:
+	case types.Array:
 		elem, err := t.ElementType.GoReflectType()
 		if err != nil {
 			return nil, err
 		}
 		return reflect.SliceOf(elem), nil
-	case types.STRUCT:
+	case types.Struct:
 		return reflect.TypeOf(map[string]interface{}{}), nil
 	}
 	return nil, fmt.Errorf("cannot convert %s to reflect.Type", t.Name)
@@ -240,13 +248,13 @@ func (t *Type) GoReflectType() (reflect.Type, error) {
 
 func (t *Type) ToZetaSQLType() (types.Type, error) {
 	switch types.TypeKind(t.Kind) {
-	case types.ARRAY:
+	case types.Array:
 		typ, err := t.ElementType.ToZetaSQLType()
 		if err != nil {
 			return nil, err
 		}
 		return types.NewArrayType(typ)
-	case types.STRUCT:
+	case types.Struct:
 		var fields []*types.StructField
 		for _, field := range t.FieldTypes {
 			typ, err := field.Type.ToZetaSQLType()
@@ -257,65 +265,65 @@ func (t *Type) ToZetaSQLType() (types.Type, error) {
 		}
 		return types.NewStructType(fields)
 	}
-	return types.TypeFromKind(types.TypeKind(t.Kind)), nil
+	return types.TypeFromKind(t.Kind), nil
 }
 
 func (t *Type) FormatType() string {
 	switch t.Kind {
-	case types.STRUCT:
+	case types.Struct:
 		formatTypes := make([]string, 0, len(t.FieldTypes))
 		for _, field := range t.FieldTypes {
 			formatTypes = append(formatTypes, fmt.Sprintf("`%s` %s", field.Name, field.Type.FormatType()))
 		}
 		return fmt.Sprintf("STRUCT<%s>", strings.Join(formatTypes, ","))
-	case types.ARRAY:
+	case types.Array:
 		return fmt.Sprintf("ARRAY<%s>", t.ElementType.FormatType())
 	}
-	return types.TypeKind(t.Kind).String()
+	return t.Kind.String()
 }
 
 func (s *ColumnSpec) SQLiteSchema() string {
 	var typ string
-	switch types.TypeKind(s.Type.Kind) {
-	case types.INT32, types.INT64, types.UINT32, types.UINT64:
+	switch s.Type.Kind {
+	case types.Int32, types.Int64, types.Uint32, types.Uint64:
 		typ = "INT"
-	case types.ENUM:
+	case types.Enum:
 		typ = "INT"
-	case types.BOOL:
+	case types.Bool:
 		typ = "BOOLEAN"
-	case types.FLOAT:
+	case types.Float:
 		typ = "FLOAT"
-	case types.BYTES:
+	case types.Bytes:
 		typ = "BLOB"
-	case types.DOUBLE:
+	case types.Double:
 		typ = "DOUBLE"
-	case types.JSON:
+	case types.Json:
 		typ = "JSON"
-	case types.STRING:
+	case types.String:
 		typ = "TEXT"
-	case types.DATE:
+	case types.Date:
 		typ = "TEXT"
-	case types.TIMESTAMP:
+	case types.Timestamp:
 		typ = "TEXT"
-	case types.ARRAY:
+	case types.Array:
 		typ = "TEXT"
-	case types.STRUCT:
+	case types.Struct:
 		typ = "TEXT"
-	case types.PROTO:
+	case types.Proto:
 		typ = "TEXT"
-	case types.TIME:
+	case types.Time:
 		typ = "TEXT"
-	case types.DATETIME:
+	case types.Datetime:
 		typ = "TEXT"
-	case types.GEOGRAPHY:
+	case types.Geography:
 		typ = "TEXT"
-	case types.NUMERIC:
+	case types.Numeric:
 		typ = "TEXT"
-	case types.BIG_NUMERIC:
+	case types.BigNumeric:
 		typ = "TEXT"
-	case types.EXTENDED:
+	case types.Extended:
 		typ = "TEXT"
-	case types.INTERVAL:
+	case types.Interval:
 		typ = "TEXT"
 	default:
 		typ = "UNKNOWN"
@@ -328,22 +336,30 @@ func (s *ColumnSpec) SQLiteSchema() string {
 }
 
 func newTypeFromFunctionArgumentType(t *types.FunctionArgumentType) *Type {
-	if t.IsTemplated() {
-		return &Type{SignatureKind: t.Kind()}
+	if t.Kind != types.ArgTypeFixed {
+		return &Type{SignatureKind: t.Kind}
 	}
-	return newType(t.Type())
+	return newType(t.Type)
 }
 
 func newFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast.CreateFunctionStmtNode) (*FunctionSpec, error) {
 	args := []*NameWithType{}
 	signature := stmt.Signature()
-	for _, arg := range signature.Arguments() {
+	for _, arg := range signature.GetArgument() {
+		argType, err := newTypeFromArgumentTypeProto(arg)
+		if err != nil {
+			return nil, err
+		}
 		args = append(args, &NameWithType{
-			Name: arg.ArgumentName(),
-			Type: newTypeFromFunctionArgumentType(arg),
+			Name: arg.GetOptions().GetArgumentName(),
+			Type: argType,
 		})
 	}
 
+	returnType, err := types.TypeFromProto(stmt.ReturnType())
+	if err != nil {
+		return nil, err
+	}
 	var body string
 	language := stmt.Language()
 	switch language {
@@ -352,7 +368,7 @@ func newFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast.CreateFu
 		if err != nil {
 			return nil, err
 		}
-		encodedType, err := json.Marshal(newType(stmt.ReturnType()))
+		encodedType, err := json.Marshal(newType(returnType))
 		if err != nil {
 			return nil, err
 		}
@@ -369,7 +385,11 @@ func newFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast.CreateFu
 		if len(argParams) == 0 {
 			body = fmt.Sprintf("zetasqlite_eval_javascript('%s', '%s')", code, retType)
 		} else {
-			arr, err := EncodeGoValue(types.StringArrayType(), argNames)
+			stringArrayType, err := types.NewArrayType(types.StringType())
+			if err != nil {
+				return nil, err
+			}
+			arr, err := EncodeGoValue(stringArrayType, argNames)
 			if err != nil {
 				return nil, err
 			}
@@ -391,10 +411,10 @@ func newFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast.CreateFu
 	}
 	now := time.Now()
 	return &FunctionSpec{
-		IsTemp:    stmt.CreateScope() == ast.CreateScopeTemp,
+		IsTemp:    stmt.CreateScope() == ast.CreateTempScope,
 		NamePath:  namePath.mergePath(stmt.NamePath()),
 		Args:      args,
-		Return:    newType(stmt.ReturnType()),
+		Return:    newType(returnType),
 		Code:      stmt.Code(),
 		Body:      body,
 		Language:  language,
@@ -403,28 +423,62 @@ func newFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast.CreateFu
 	}, nil
 }
 
-func newTypeFromFunctionArgumentTypeByRealType(t *types.FunctionArgumentType, realType types.Type) *Type {
-	if t.IsTemplated() {
-		if realType.IsArray() {
-			return &Type{SignatureKind: types.ArgArrayTypeAny1}
-		}
-		return &Type{SignatureKind: types.ArgTypeAny1}
+// newTypeFromArgumentTypeProto rebuilds the fork's *Type from a
+// *generated.FunctionArgumentTypeProto, treating templated kinds as the
+// wrapped SignatureArgumentKind and fixed kinds as the resolved Type.
+func newTypeFromArgumentTypeProto(arg *generated.FunctionArgumentTypeProto) (*Type, error) {
+	if arg.GetKind() != generated.SignatureArgumentKind_ARG_TYPE_FIXED {
+		return &Type{SignatureKind: types.SignatureArgumentKind(arg.GetKind())}, nil
 	}
-	return newType(t.Type())
+	t, err := types.TypeFromProto(arg.GetType())
+	if err != nil {
+		return nil, err
+	}
+	return newType(t), nil
+}
+
+// newTypeFromArgumentTypeProtoByRealType is the proto-aware twin of the old
+// newTypeFromFunctionArgumentTypeByRealType. For templated arguments it
+// reflects the realised type's shape (array vs scalar) into the templated
+// SignatureArgumentKind; for fixed arguments it just unwraps the proto type.
+func newTypeFromArgumentTypeProtoByRealType(arg *generated.FunctionArgumentTypeProto, realProto *generated.TypeProto) (*Type, error) {
+	if arg.GetKind() != generated.SignatureArgumentKind_ARG_TYPE_FIXED {
+		realType, err := types.TypeFromProto(realProto)
+		if err != nil {
+			return nil, err
+		}
+		if realType != nil && realType.IsArray() {
+			return &Type{SignatureKind: types.ArgArrayTypeAny1}, nil
+		}
+		return &Type{SignatureKind: types.ArgTypeAny1}, nil
+	}
+	t, err := types.TypeFromProto(arg.GetType())
+	if err != nil {
+		return nil, err
+	}
+	return newType(t), nil
 }
 
 func newTemplatedFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast.CreateFunctionStmtNode, realStmts []*ast.CreateFunctionStmtNode) (*FunctionSpec, error) {
 	signature := stmt.Signature()
-	arguments := signature.Arguments()
+	arguments := signature.GetArgument()
 	realStmt := realStmts[0]
 	realSignature := realStmt.Signature()
-	realArguments := realSignature.Arguments()
-	resultType := newType(realSignature.ResultType().Type())
+	realArguments := realSignature.GetArgument()
+	realReturnType, err := types.TypeFromProto(realSignature.GetReturnType().GetType())
+	if err != nil {
+		return nil, err
+	}
+	resultType := newType(realReturnType)
 	resultTypeName := resultType.FormatType()
 
 	allSameResultType := true
 	for _, stmt := range realStmts {
-		if newType(stmt.Signature().ResultType().Type()).FormatType() != resultTypeName {
+		t, err := types.TypeFromProto(stmt.Signature().GetReturnType().GetType())
+		if err != nil {
+			return nil, err
+		}
+		if newType(t).FormatType() != resultTypeName {
 			allSameResultType = false
 			break
 		}
@@ -433,19 +487,27 @@ func newTemplatedFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast
 	if allSameResultType {
 		retType = resultType
 	} else {
-		retType = newTypeFromFunctionArgumentTypeByRealType(
-			signature.ResultType(),
-			realSignature.ResultType().Type(),
+		rt, err := newTypeFromArgumentTypeProtoByRealType(
+			signature.GetReturnType(),
+			realSignature.GetReturnType().GetType(),
 		)
+		if err != nil {
+			return nil, err
+		}
+		retType = rt
 	}
 	args := []*NameWithType{}
 	for i := 0; i < len(arguments); i++ {
+		argType, err := newTypeFromArgumentTypeProtoByRealType(
+			arguments[i],
+			realArguments[i].GetType(),
+		)
+		if err != nil {
+			return nil, err
+		}
 		args = append(args, &NameWithType{
-			Name: arguments[i].ArgumentName(),
-			Type: newTypeFromFunctionArgumentTypeByRealType(
-				arguments[i],
-				realArguments[i].Type(),
-			),
+			Name: arguments[i].GetOptions().GetArgumentName(),
+			Type: argType,
 		})
 	}
 	funcExpr := stmt.FunctionExpression()
@@ -459,7 +521,7 @@ func newTemplatedFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast
 	}
 	now := time.Now()
 	return &FunctionSpec{
-		IsTemp:    stmt.CreateScope() == ast.CreateScopeTemp,
+		IsTemp:    stmt.CreateScope() == ast.CreateTempScope,
 		NamePath:  namePath.mergePath(stmt.NamePath()),
 		Args:      args,
 		Return:    retType,
@@ -471,7 +533,7 @@ func newTemplatedFunctionSpec(ctx context.Context, namePath *NamePath, stmt *ast
 	}, nil
 }
 
-func newColumnsFromDef(def []*ast.ColumnDefinitionNode) []*ColumnSpec {
+func newColumnsFromDef(def []*ast.ColumnDefinitionNode) ([]*ColumnSpec, error) {
 	columns := []*ColumnSpec{}
 	for _, columnNode := range def {
 		annotation := columnNode.Annotations()
@@ -484,26 +546,33 @@ func newColumnsFromDef(def []*ast.ColumnDefinitionNode) []*ColumnSpec {
 			}
 			isNotNull = annotation.NotNull()
 		}
+		colType, err := types.TypeFromProto(columnNode.Type())
+		if err != nil {
+			return nil, err
+		}
 		columns = append(columns, &ColumnSpec{
 			Name:      columnNode.Name(),
-			Type:      newType(columnNode.Type()),
+			Type:      newType(colType),
 			IsNotNull: isNotNull,
 		})
 	}
-	return columns
+	return columns, nil
 }
 
-func newColumnsFromOutputColumns(def []*ast.OutputColumnNode) []*ColumnSpec {
+func newColumnsFromOutputColumns(def []*ast.OutputColumnNode) ([]*ColumnSpec, error) {
 	columns := []*ColumnSpec{}
 	for _, columnNode := range def {
 		column := columnNode.Column()
-
+		colType, err := types.TypeFromProto(column.GetType())
+		if err != nil {
+			return nil, err
+		}
 		columns = append(columns, &ColumnSpec{
 			Name: columnNode.Name(),
-			Type: newType(column.Type()),
+			Type: newType(colType),
 		})
 	}
-	return columns
+	return columns, nil
 }
 
 func newPrimaryKey(key *ast.PrimaryKeyNode) []string {
@@ -513,87 +582,108 @@ func newPrimaryKey(key *ast.PrimaryKeyNode) []string {
 	return key.ColumnNameList()
 }
 
-func newTableSpec(namePath *NamePath, stmt *ast.CreateTableStmtNode) *TableSpec {
+func newTableSpec(namePath *NamePath, stmt *ast.CreateTableStmtNode) (*TableSpec, error) {
 	now := time.Now()
+	cols, err := newColumnsFromDef(stmt.ColumnDefinitionList())
+	if err != nil {
+		return nil, err
+	}
 	return &TableSpec{
-		IsTemp:     stmt.CreateScope() == ast.CreateScopeTemp,
+		IsTemp:     stmt.CreateScope() == ast.CreateTempScope,
 		NamePath:   namePath.mergePath(stmt.NamePath()),
-		Columns:    newColumnsFromDef(stmt.ColumnDefinitionList()),
+		Columns:    cols,
 		PrimaryKey: newPrimaryKey(stmt.PrimaryKey()),
 		CreateMode: stmt.CreateMode(),
 		UpdatedAt:  now,
 		CreatedAt:  now,
-	}
+	}, nil
 }
 
-func newTableAsViewSpec(namePath *NamePath, query string, stmt *ast.CreateViewStmtNode) *TableSpec {
+func newTableAsViewSpec(namePath *NamePath, query string, stmt *ast.CreateViewStmtNode) (*TableSpec, error) {
 	var outputColumns []string
 	for _, column := range stmt.OutputColumnList() {
 		colName := column.Name()
-		refColumnName := column.Column().Name()
-		colID := column.Column().ColumnID()
+		refColumnName := column.Column().GetName()
+		colID := column.Column().GetColumnId()
 		outputColumns = append(
 			outputColumns,
 			fmt.Sprintf("`%s#%d` AS `%s`", refColumnName, colID, colName),
 		)
 	}
+	cols, err := newColumnsFromOutputColumns(stmt.OutputColumnList())
+	if err != nil {
+		return nil, err
+	}
 	now := time.Now()
 	return &TableSpec{
-		IsTemp:     stmt.CreateScope() == ast.CreateScopeTemp,
+		IsTemp:     stmt.CreateScope() == ast.CreateTempScope,
 		IsView:     true,
 		NamePath:   namePath.mergePath(stmt.NamePath()),
-		Columns:    newColumnsFromOutputColumns(stmt.OutputColumnList()),
+		Columns:    cols,
 		CreateMode: stmt.CreateMode(),
 		Query:      fmt.Sprintf("SELECT %s FROM (%s)", strings.Join(outputColumns, ","), query),
 		UpdatedAt:  now,
 		CreatedAt:  now,
-	}
+	}, nil
 }
 
-func newTableAsSelectSpec(namePath *NamePath, query string, stmt *ast.CreateTableAsSelectStmtNode) *TableSpec {
+func newTableAsSelectSpec(namePath *NamePath, query string, stmt *ast.CreateTableAsSelectStmtNode) (*TableSpec, error) {
 	var outputColumns []string
 	for _, column := range stmt.OutputColumnList() {
 		colName := column.Name()
-		refColumnName := column.Column().Name()
-		colID := column.Column().ColumnID()
+		refColumnName := column.Column().GetName()
+		colID := column.Column().GetColumnId()
 		outputColumns = append(
 			outputColumns,
 			fmt.Sprintf("`%s#%d` AS `%s`", refColumnName, colID, colName),
 		)
 	}
+	cols, err := newColumnsFromDef(stmt.ColumnDefinitionList())
+	if err != nil {
+		return nil, err
+	}
 	now := time.Now()
 	return &TableSpec{
-		IsTemp:     stmt.CreateScope() == ast.CreateScopeTemp,
+		IsTemp:     stmt.CreateScope() == ast.CreateTempScope,
 		NamePath:   namePath.mergePath(stmt.NamePath()),
-		Columns:    newColumnsFromDef(stmt.ColumnDefinitionList()),
+		Columns:    cols,
 		PrimaryKey: newPrimaryKey(stmt.PrimaryKey()),
 		CreateMode: stmt.CreateMode(),
 		Query:      fmt.Sprintf("SELECT %s FROM (%s)", strings.Join(outputColumns, ","), query),
 		UpdatedAt:  now,
 		CreatedAt:  now,
-	}
+	}, nil
 }
 
 func newType(t types.Type) *Type {
+	if t == nil {
+		return nil
+	}
 	kind := t.Kind()
 	var (
 		elem       *Type
 		fieldTypes []*NameWithType
 	)
 	switch kind {
-	case types.ARRAY:
-		elem = newType(t.AsArray().ElementType())
-	case types.STRUCT:
-		for _, field := range t.AsStruct().Fields() {
+	case types.Array:
+		elem = newType(t.AsArray().ElementType)
+	case types.Struct:
+		for _, field := range t.AsStruct().Fields {
 			fieldTypes = append(fieldTypes, &NameWithType{
-				Name: field.Name(),
-				Type: newType(field.Type()),
+				Name: field.Name,
+				Type: newType(field.Type),
 			})
 		}
 	}
 	return &Type{
-		Name:        t.TypeName(types.ProductInternal),
-		Kind:        int(kind),
+		// TODO(zetasql-wasm-migration): types.Type doesn't expose a
+		// TypeName(productMode) method (go-zetasql gave a "STRING" /
+		// "ARRAY<INT64>" form). KindString returns the proto-name
+		// "TYPE_STRING"; the proper name reconstruction lives on the
+		// fork's *Type.FormatType, so this Name field is only used as
+		// a debugging tag for now.
+		Name:        kind.String(),
+		Kind:        kind,
 		ElementType: elem,
 		FieldTypes:  fieldTypes,
 	}

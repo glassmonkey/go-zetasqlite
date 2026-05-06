@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/dop251/goja"
-	"github.com/goccy/go-zetasql/types"
+	"github.com/glassmonkey/zetasql-wasm/types"
 )
 
 func EVAL_JAVASCRIPT(code string, retType *Type, argNames []string, args []Value) (Value, error) {
@@ -53,54 +53,54 @@ func castJavaScriptValue(t types.Type, v goja.Value) (Value, error) {
 		return nil, nil
 	}
 	switch t.Kind() {
-	case types.INT32, types.INT64, types.UINT32, types.UINT64:
+	case types.Int32, types.Int64, types.Uint32, types.Uint64:
 		return IntValue(v.ToInteger()), nil
-	case types.BOOL:
+	case types.Bool:
 		return BoolValue(v.ToBoolean()), nil
-	case types.FLOAT, types.DOUBLE:
+	case types.Float, types.Double:
 		return FloatValue(v.ToFloat()), nil
-	case types.STRING, types.ENUM:
+	case types.String, types.Enum:
 		return StringValue(v.ToString().String()), nil
-	case types.BYTES:
+	case types.Bytes:
 		return BytesValue(v.ToString().String()), nil
-	case types.DATE:
+	case types.Date:
 		t, err := parseDate(v.ToString().String())
 		if err != nil {
 			return nil, err
 		}
 		return DateValue(t), nil
-	case types.DATETIME:
+	case types.Datetime:
 		t, err := parseDatetime(v.ToString().String())
 		if err != nil {
 			return nil, err
 		}
 		return DatetimeValue(t), nil
-	case types.TIME:
+	case types.Time:
 		t, err := parseTime(v.ToString().String())
 		if err != nil {
 			return nil, err
 		}
 		return TimeValue(t), nil
-	case types.TIMESTAMP:
+	case types.Timestamp:
 		t, err := parseTimestamp(v.ToString().String(), time.UTC)
 		if err != nil {
 			return nil, err
 		}
 		return TimestampValue(t), nil
-	case types.INTERVAL:
+	case types.Interval:
 		return parseInterval(v.ToString().String())
-	case types.NUMERIC:
+	case types.Numeric:
 		r := new(big.Rat)
 		r.SetString(v.ToNumber().String())
 		return &NumericValue{Rat: r}, nil
-	case types.BIG_NUMERIC:
+	case types.BigNumeric:
 		r := new(big.Rat)
 		r.SetString(v.ToNumber().String())
 		return &NumericValue{Rat: r}, nil
-	case types.JSON:
+	case types.Json:
 		return JsonValue(v.ToString().String()), nil
-	case types.ARRAY:
-		elemType := t.AsArray().ElementType()
+	case types.Array:
+		elemType := t.AsArray().ElementType
 		var ret ArrayValue
 		for _, vv := range v.Export().([]interface{}) {
 			base, err := ValueFromGoValue(vv)
@@ -114,13 +114,13 @@ func castJavaScriptValue(t types.Type, v goja.Value) (Value, error) {
 			ret.values = append(ret.values, elem)
 		}
 		return &ret, nil
-	case types.STRUCT:
+	case types.Struct:
 		base, err := ValueFromGoValue(v.Export())
 		if err != nil {
 			return nil, err
 		}
 		return CastValue(t, base)
-	case types.GEOGRAPHY:
+	case types.Geography:
 		base, err := ValueFromGoValue(v.Export())
 		if err != nil {
 			return nil, err

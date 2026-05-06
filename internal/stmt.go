@@ -6,7 +6,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 
-	ast "github.com/goccy/go-zetasql/resolved_ast"
+	ast "github.com/glassmonkey/zetasql-wasm/resolved_ast"
 )
 
 var (

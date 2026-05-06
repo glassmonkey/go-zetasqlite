@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	ast "github.com/goccy/go-zetasql/resolved_ast"
+	ast "github.com/glassmonkey/zetasql-wasm/resolved_ast"
 )
 
 type StmtAction interface {

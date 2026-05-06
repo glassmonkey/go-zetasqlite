@@ -9,8 +9,8 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/glassmonkey/zetasql-wasm/types"
 	"github.com/goccy/go-json"
-	"github.com/goccy/go-zetasql/types"
 )
 
 type Rows struct {
@@ -210,67 +210,67 @@ func (r *Rows) assignValue(src interface{}, dst reflect.Value, typ *Type) error 
 
 func (r *Rows) assignInterfaceValue(src Value, dst reflect.Value, typ *Type) error {
 	switch types.TypeKind(typ.Kind) {
-	case types.INT32, types.INT64, types.UINT32, types.UINT64:
+	case types.Int32, types.Int64, types.Uint32, types.Uint64:
 		i64, err := src.ToInt64()
 		if err != nil {
 			return err
 		}
 		dst.Set(reflect.ValueOf(i64))
-	case types.BOOL:
+	case types.Bool:
 		b, err := src.ToBool()
 		if err != nil {
 			return err
 		}
 		dst.Set(reflect.ValueOf(b))
-	case types.FLOAT, types.DOUBLE:
+	case types.Float, types.Double:
 		f64, err := src.ToFloat64()
 		if err != nil {
 			return err
 		}
 		dst.Set(reflect.ValueOf(f64))
-	case types.BYTES:
+	case types.Bytes:
 		s, err := src.ToString()
 		if err != nil {
 			return err
 		}
 		dst.Set(reflect.ValueOf(s))
-	case types.STRING:
+	case types.String:
 		s, err := src.ToString()
 		if err != nil {
 			return err
 		}
 		dst.Set(reflect.ValueOf(s))
-	case types.NUMERIC:
+	case types.Numeric:
 		s, err := src.ToString()
 		if err != nil {
 			return err
 		}
 		dst.Set(reflect.ValueOf(s))
-	case types.BIG_NUMERIC:
+	case types.BigNumeric:
 		s, err := src.ToString()
 		if err != nil {
 			return err
 		}
 		dst.Set(reflect.ValueOf(s))
-	case types.DATE:
+	case types.Date:
 		date, err := src.ToJSON()
 		if err != nil {
 			return err
 		}
 		dst.Set(reflect.ValueOf(date))
-	case types.DATETIME:
+	case types.Datetime:
 		datetime, err := src.ToJSON()
 		if err != nil {
 			return err
 		}
 		dst.Set(reflect.ValueOf(datetime))
-	case types.TIME:
+	case types.Time:
 		t, err := src.ToJSON()
 		if err != nil {
 			return err
 		}
 		dst.Set(reflect.ValueOf(t))
-	case types.TIMESTAMP:
+	case types.Timestamp:
 		t, err := src.ToTime()
 		if err != nil {
 			return err
@@ -279,25 +279,25 @@ func (r *Rows) assignInterfaceValue(src Value, dst reflect.Value, typ *Type) err
 		sec := unixmicro / int64(time.Millisecond)
 		nsec := unixmicro - sec*int64(time.Millisecond)
 		dst.Set(reflect.ValueOf(fmt.Sprintf("%d.%d", sec, nsec)))
-	case types.INTERVAL:
+	case types.Interval:
 		s, err := src.ToString()
 		if err != nil {
 			return err
 		}
 		dst.Set(reflect.ValueOf(s))
-	case types.JSON:
+	case types.Json:
 		v, err := src.ToJSON()
 		if err != nil {
 			return err
 		}
 		dst.Set(reflect.ValueOf(v))
-	case types.STRUCT:
+	case types.Struct:
 		s, err := src.ToStruct()
 		if err != nil {
 			return err
 		}
 		dst.Set(reflect.ValueOf(s.Interface()))
-	case types.ARRAY:
+	case types.Array:
 		array, err := src.ToArray()
 		if err != nil {
 			return err
@@ -317,7 +317,7 @@ func (r *Rows) assignInterfaceValue(src Value, dst reflect.Value, typ *Type) err
 			sliceRef.Elem().Set(reflect.Append(sliceRef.Elem(), refV.Elem()))
 		}
 		dst.Set(sliceRef.Elem())
-	case types.GEOGRAPHY:
+	case types.Geography:
 		s, err := src.ToString()
 		if err != nil {
 			return err

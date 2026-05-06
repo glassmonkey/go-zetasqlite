@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/goccy/go-zetasql"
-	parsed_ast "github.com/goccy/go-zetasql/ast"
-	ast "github.com/goccy/go-zetasql/resolved_ast"
-	"github.com/goccy/go-zetasql/types"
+	"github.com/glassmonkey/zetasql-wasm"
+	parsed_ast "github.com/glassmonkey/zetasql-wasm/ast"
+	ast "github.com/glassmonkey/zetasql-wasm/resolved_ast"
+	"github.com/glassmonkey/zetasql-wasm/types"
+	"github.com/glassmonkey/zetasql-wasm/wasm/generated"
 )
 
 type Analyzer struct {
@@ -18,25 +19,48 @@ type Analyzer struct {
 	isExplainMode   bool
 	catalog         *Catalog
 	opt             *zetasql.AnalyzerOptions
+	analyzer        *zetasql.Analyzer
+	parser          *zetasql.Parser
 }
 
-func NewAnalyzer(catalog *Catalog) (*Analyzer, error) {
+func NewAnalyzer(ctx context.Context, catalog *Catalog) (*Analyzer, error) {
 	opt, err := newAnalyzerOptions()
 	if err != nil {
 		return nil, err
+	}
+	wasmAnalyzer, err := zetasql.NewAnalyzer(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to init zetasql-wasm analyzer: %w", err)
+	}
+	wasmParser, err := zetasql.NewParser(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to init zetasql-wasm parser: %w", err)
 	}
 	return &Analyzer{
 		catalog:  catalog,
 		opt:      opt,
 		namePath: &NamePath{},
+		analyzer: wasmAnalyzer,
+		parser:   wasmParser,
 	}, nil
+}
+
+// Close releases the embedded WASM runtimes.
+func (a *Analyzer) Close(ctx context.Context) error {
+	if a.parser != nil {
+		_ = a.parser.Close(ctx)
+	}
+	if a.analyzer != nil {
+		return a.analyzer.Close(ctx)
+	}
+	return nil
 }
 
 func newAnalyzerOptions() (*zetasql.AnalyzerOptions, error) {
 	langOpt := zetasql.NewLanguageOptions()
-	langOpt.SetNameResolutionMode(zetasql.NameResolutionDefault)
-	langOpt.SetProductMode(types.ProductInternal)
-	langOpt.SetEnabledLanguageFeatures([]zetasql.LanguageFeature{
+	langOpt.NameResolutionMode = zetasql.NameResolutionDefault
+	langOpt.ProductMode = zetasql.ProductInternal
+	for _, f := range []zetasql.LanguageFeature{
 		zetasql.FeatureAnalyticFunctions,
 		zetasql.FeatureNamedArguments,
 		zetasql.FeatureNumericType,
@@ -76,34 +100,39 @@ func newAnalyzerOptions() (*zetasql.AnalyzerOptions, error) {
 		zetasql.FeatureV13Pivot,
 		zetasql.FeatureV13Unpivot,
 		zetasql.FeatureCreateTableAsSelectColumnList,
-	})
-	langOpt.SetSupportedStatementKinds([]ast.Kind{
-		ast.BeginStmt,
-		ast.CommitStmt,
-		ast.MergeStmt,
-		ast.QueryStmt,
-		ast.InsertStmt,
-		ast.UpdateStmt,
-		ast.DeleteStmt,
-		ast.DropStmt,
-		ast.TruncateStmt,
-		ast.CreateTableStmt,
-		ast.CreateTableAsSelectStmt,
-		ast.CreateProcedureStmt,
-		ast.CreateFunctionStmt,
-		ast.CreateTableFunctionStmt,
-		ast.CreateViewStmt,
-		ast.DropFunctionStmt,
+	} {
+		langOpt.EnableLanguageFeature(f)
+	}
+	// The set go-zetasqlite's stmt_action dispatcher handles. Statements
+	// outside this list are rejected at analysis time so unsupported SQL
+	// fails earlier and with a clearer error than a downstream "unknown
+	// resolved node kind" from the dispatcher.
+	langOpt.SetSupportedStatementKinds([]generated.ResolvedNodeKind{
+		generated.ResolvedNodeKind_RESOLVED_BEGIN_STMT,
+		generated.ResolvedNodeKind_RESOLVED_COMMIT_STMT,
+		generated.ResolvedNodeKind_RESOLVED_MERGE_STMT,
+		generated.ResolvedNodeKind_RESOLVED_QUERY_STMT,
+		generated.ResolvedNodeKind_RESOLVED_INSERT_STMT,
+		generated.ResolvedNodeKind_RESOLVED_UPDATE_STMT,
+		generated.ResolvedNodeKind_RESOLVED_DELETE_STMT,
+		generated.ResolvedNodeKind_RESOLVED_DROP_STMT,
+		generated.ResolvedNodeKind_RESOLVED_TRUNCATE_STMT,
+		generated.ResolvedNodeKind_RESOLVED_CREATE_TABLE_STMT,
+		generated.ResolvedNodeKind_RESOLVED_CREATE_TABLE_AS_SELECT_STMT,
+		generated.ResolvedNodeKind_RESOLVED_CREATE_PROCEDURE_STMT,
+		generated.ResolvedNodeKind_RESOLVED_CREATE_FUNCTION_STMT,
+		generated.ResolvedNodeKind_RESOLVED_CREATE_TABLE_FUNCTION_STMT,
+		generated.ResolvedNodeKind_RESOLVED_CREATE_VIEW_STMT,
+		generated.ResolvedNodeKind_RESOLVED_DROP_FUNCTION_STMT,
 	})
 	// Enable QUALIFY without WHERE
 	// https://github.com/google/zetasql/issues/124
-	if err := langOpt.EnableReservableKeyword("QUALIFY", true); err != nil {
-		return nil, err
-	}
+	langOpt.EnableReservableKeyword("QUALIFY", true)
 	opt := zetasql.NewAnalyzerOptions()
-	opt.SetAllowUndeclaredParameters(true)
-	opt.SetLanguage(langOpt)
-	opt.SetParseLocationRecordType(zetasql.ParseLocationRecordFullNodeScope)
+	opt.AllowUndeclaredParameters = true
+	opt.Language = langOpt
+	pl := zetasql.ParseLocationRecordFullNodeScope
+	opt.ParseLocationRecordType = &pl
 	return opt, nil
 }
 
@@ -135,25 +164,25 @@ func (a *Analyzer) AddNamePath(path string) error {
 	return a.namePath.addPath(path)
 }
 
-func (a *Analyzer) parseScript(query string) ([]parsed_ast.StatementNode, error) {
-	loc := zetasql.NewParseResumeLocation(query)
-	var stmts []parsed_ast.StatementNode
-	for {
-		stmt, isEnd, err := zetasql.ParseNextScriptStatement(loc, a.opt.ParserOptions())
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse statement: %w", err)
-		}
-		switch s := stmt.(type) {
-		case *parsed_ast.BeginEndBlockNode:
-			stmts = append(stmts, s.StatementList()...)
-		default:
-			stmts = append(stmts, s)
-		}
-		if isEnd {
-			break
-		}
+func (a *Analyzer) parseScript(ctx context.Context, query string) ([]parsed_ast.StatementNode, error) {
+	// TODO(zetasql-wasm-migration): zetasql-wasm doesn't yet expose a
+	// ParseNextScriptStatement loop, so multi-top-level scripts
+	// (e.g. "SELECT 1; SELECT 2;") are reduced to a single parse here.
+	// BeginEndBlock is unpacked, matching the previous behaviour for the
+	// scripted-block case.
+	stmt, err := a.parser.ParseStatement(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse statement: %w", err)
 	}
-	return stmts, nil
+	root := stmt.Root
+	switch s := root.(type) {
+	case *parsed_ast.BeginEndBlockNode:
+		return s.StatementListNode().StatementList(), nil
+	}
+	if root, ok := root.(parsed_ast.StatementNode); ok {
+		return []parsed_ast.StatementNode{root}, nil
+	}
+	return nil, fmt.Errorf("unexpected root node %T", root)
 }
 
 func (a *Analyzer) getParameterMode(stmt parsed_ast.StatementNode) (zetasql.ParameterMode, error) {
@@ -188,7 +217,7 @@ func (a *Analyzer) Analyze(ctx context.Context, conn *Conn, query string, args [
 	if err := a.catalog.Sync(ctx, conn); err != nil {
 		return nil, fmt.Errorf("failed to sync catalog: %w", err)
 	}
-	stmts, err := a.parseScript(query)
+	stmts, err := a.parseScript(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse statements: %w", err)
 	}
@@ -204,17 +233,19 @@ func (a *Analyzer) Analyze(ctx context.Context, conn *Conn, query string, args [
 			if err != nil {
 				return nil, err
 			}
-			a.opt.SetParameterMode(mode)
-			out, err := zetasql.AnalyzeStatementFromParserAST(
-				query,
-				stmt,
-				a.catalog,
-				a.opt,
-			)
+			a.opt.ParameterMode = mode
+			// TODO(zetasql-wasm-migration): zetasql-wasm has no
+			// AnalyzeStatementFromParserAST equivalent — re-analyse from
+			// SQL text. Fine for single-statement queries; for scripted
+			// inputs the parseScript split already handed us the SQL form
+			// of each statement is unavailable, so we pass the original
+			// query when there's only one statement and rely on the
+			// fork's scripted-block fallback otherwise.
+			out, err := a.analyzer.AnalyzeStatement(ctx, query, a.catalog.SimpleCatalog(), a.opt)
 			if err != nil {
 				return nil, fmt.Errorf("failed to analyze: %w", err)
 			}
-			stmtNode := out.Statement()
+			stmtNode := out.Statement
 			ctx = a.context(ctx, funcMap, stmtNode, stmt)
 			action, err := a.newStmtAction(ctx, query, args, stmtNode)
 			if err != nil {
@@ -237,19 +268,24 @@ func (a *Analyzer) context(
 	ctx = withAnalyzer(ctx, a)
 	ctx = withNamePath(ctx, a.namePath)
 	ctx = withColumnRefMap(ctx, map[string]string{})
-	ctx = withTableNameToColumnListMap(ctx, map[string][]*ast.Column{})
+	ctx = withTableNameToColumnListMap(ctx, map[string][]*generated.ResolvedColumnProto{})
 	ctx = withFuncMap(ctx, funcMap)
 	ctx = withAnalyticOrderColumnNames(ctx, &analyticOrderColumnNames{})
-	ctx = withNodeMap(ctx, zetasql.NewNodeMap(stmtNode, stmt))
+	// TODO(zetasql-wasm-migration): zetasql.NewNodeMap takes only the
+	// resolved statement; the parsed AST counterpart needs a separate
+	// reverse-lookup design (see development-plan.md). Drop the second
+	// argument for now.
+	_ = stmt
+	ctx = withNodeMap(ctx, &nodeMap{resolved: zetasql.NewNodeMap(stmtNode)})
 	return ctx
 }
 
 func (a *Analyzer) analyzeTemplatedFunctionWithRuntimeArgument(ctx context.Context, query string) (*FunctionSpec, error) {
-	out, err := zetasql.AnalyzeStatement(query, a.catalog, a.opt)
+	out, err := a.analyzer.AnalyzeStatement(ctx, query, a.catalog.SimpleCatalog(), a.opt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to analyze: %w", err)
 	}
-	node := out.Statement()
+	node := out.Statement
 	stmt, ok := node.(*ast.CreateFunctionStmtNode)
 	if !ok {
 		return nil, fmt.Errorf("unexpected create function query %s", query)
@@ -263,40 +299,43 @@ func (a *Analyzer) analyzeTemplatedFunctionWithRuntimeArgument(ctx context.Conte
 
 func (a *Analyzer) newStmtAction(ctx context.Context, query string, args []driver.NamedValue, node ast.StatementNode) (StmtAction, error) {
 	switch node.Kind() {
-	case ast.CreateTableStmt:
+	case ast.KindCreateTableStmt:
 		return a.newCreateTableStmtAction(ctx, query, args, node.(*ast.CreateTableStmtNode))
-	case ast.CreateTableAsSelectStmt:
+	case ast.KindCreateTableAsSelectStmt:
 		ctx = withUseColumnID(ctx)
 		return a.newCreateTableAsSelectStmtAction(ctx, query, args, node.(*ast.CreateTableAsSelectStmtNode))
-	case ast.CreateFunctionStmt:
+	case ast.KindCreateFunctionStmt:
 		return a.newCreateFunctionStmtAction(ctx, query, args, node.(*ast.CreateFunctionStmtNode))
-	case ast.CreateViewStmt:
+	case ast.KindCreateViewStmt:
 		ctx = withUseColumnID(ctx)
 		return a.newCreateViewStmtAction(ctx, query, args, node.(*ast.CreateViewStmtNode))
-	case ast.DropStmt:
+	case ast.KindDropStmt:
 		return a.newDropStmtAction(ctx, query, args, node.(*ast.DropStmtNode))
-	case ast.DropFunctionStmt:
+	case ast.KindDropFunctionStmt:
 		return a.newDropFunctionStmtAction(ctx, query, args, node.(*ast.DropFunctionStmtNode))
-	case ast.InsertStmt, ast.UpdateStmt, ast.DeleteStmt:
+	case ast.KindInsertStmt, ast.KindUpdateStmt, ast.KindDeleteStmt:
 		return a.newDMLStmtAction(ctx, query, args, node)
-	case ast.TruncateStmt:
+	case ast.KindTruncateStmt:
 		return a.newTruncateStmtAction(ctx, query, args, node.(*ast.TruncateStmtNode))
-	case ast.MergeStmt:
+	case ast.KindMergeStmt:
 		ctx = withUseColumnID(ctx)
 		return a.newMergeStmtAction(ctx, query, args, node.(*ast.MergeStmtNode))
-	case ast.QueryStmt:
+	case ast.KindQueryStmt:
 		ctx = withUseColumnID(ctx)
 		return a.newQueryStmtAction(ctx, query, args, node.(*ast.QueryStmtNode))
-	case ast.BeginStmt:
+	case ast.KindBeginStmt:
 		return a.newBeginStmtAction(ctx, query, args, node)
-	case ast.CommitStmt:
+	case ast.KindCommitStmt:
 		return a.newCommitStmtAction(ctx, query, args, node)
 	}
-	return nil, fmt.Errorf("unsupported stmt %s", node.DebugString())
+	return nil, fmt.Errorf("unsupported stmt %s", node.String())
 }
 
 func (a *Analyzer) newCreateTableStmtAction(_ context.Context, query string, args []driver.NamedValue, node *ast.CreateTableStmtNode) (*CreateTableStmtAction, error) {
-	spec := newTableSpec(a.namePath, node)
+	spec, err := newTableSpec(a.namePath, node)
+	if err != nil {
+		return nil, err
+	}
 	params := getParamsFromNode(node)
 	queryArgs, err := getArgsFromParams(args, params)
 	if err != nil {
@@ -316,7 +355,10 @@ func (a *Analyzer) newCreateTableAsSelectStmtAction(ctx context.Context, _ strin
 	if err != nil {
 		return nil, err
 	}
-	spec := newTableAsSelectSpec(a.namePath, query, node)
+	spec, err := newTableAsSelectSpec(a.namePath, query, node)
+	if err != nil {
+		return nil, err
+	}
 	params := getParamsFromNode(node)
 	queryArgs, err := getArgsFromParams(args, params)
 	if err != nil {
@@ -334,7 +376,7 @@ func (a *Analyzer) newCreateTableAsSelectStmtAction(ctx context.Context, _ strin
 func (a *Analyzer) newCreateFunctionStmtAction(ctx context.Context, query string, _ []driver.NamedValue, node *ast.CreateFunctionStmtNode) (*CreateFunctionStmtAction, error) {
 	var spec *FunctionSpec
 	if a.resultTypeIsTemplatedType(node.Signature()) {
-		realStmts, err := a.inferTemplatedTypeByRealType(query, node)
+		realStmts, err := a.inferTemplatedTypeByRealType(ctx, query, node)
 		if err != nil {
 			return nil, err
 		}
@@ -362,7 +404,10 @@ func (a *Analyzer) newCreateViewStmtAction(ctx context.Context, _ string, _ []dr
 	if err != nil {
 		return nil, err
 	}
-	spec := newTableAsViewSpec(a.namePath, query, node)
+	spec, err := newTableAsViewSpec(a.namePath, query, node)
+	if err != nil {
+		return nil, err
+	}
 	return &CreateViewStmtAction{
 		query:   query,
 		spec:    spec,
@@ -370,11 +415,13 @@ func (a *Analyzer) newCreateViewStmtAction(ctx context.Context, _ string, _ []dr
 	}, nil
 }
 
-func (a *Analyzer) resultTypeIsTemplatedType(sig *types.FunctionSignature) bool {
-	if !sig.IsTemplated() {
-		return false
+func (a *Analyzer) resultTypeIsTemplatedType(sig *generated.FunctionSignatureProto) bool {
+	for _, arg := range sig.GetArgument() {
+		if arg.GetKind() != generated.SignatureArgumentKind_ARG_TYPE_FIXED {
+			return sig.GetReturnType().GetKind() != generated.SignatureArgumentKind_ARG_TYPE_FIXED
+		}
 	}
-	return sig.ResultType().IsTemplated()
+	return false
 }
 
 var inferTypes = []string{
@@ -384,19 +431,19 @@ var inferTypes = []string{
 	"STRUCT<>",
 }
 
-func (a *Analyzer) inferTemplatedTypeByRealType(query string, node *ast.CreateFunctionStmtNode) ([]*ast.CreateFunctionStmtNode, error) {
+func (a *Analyzer) inferTemplatedTypeByRealType(ctx context.Context, query string, node *ast.CreateFunctionStmtNode) ([]*ast.CreateFunctionStmtNode, error) {
 	var stmts []*ast.CreateFunctionStmtNode
 	for _, typ := range inferTypes {
-		if out, err := zetasql.AnalyzeStatement(a.buildScalarTypeFuncFromTemplatedFunc(node, typ), a.catalog, a.opt); err == nil {
-			stmts = append(stmts, out.Statement().(*ast.CreateFunctionStmtNode))
+		if out, err := a.analyzer.AnalyzeStatement(ctx, a.buildScalarTypeFuncFromTemplatedFunc(node, typ), a.catalog.SimpleCatalog(), a.opt); err == nil {
+			stmts = append(stmts, out.Statement.(*ast.CreateFunctionStmtNode))
 		}
 	}
 	if len(stmts) != 0 {
 		return stmts, nil
 	}
 	for _, typ := range inferTypes {
-		if out, err := zetasql.AnalyzeStatement(a.buildArrayTypeFuncFromTemplatedFunc(node, typ), a.catalog, a.opt); err == nil {
-			stmts = append(stmts, out.Statement().(*ast.CreateFunctionStmtNode))
+		if out, err := a.analyzer.AnalyzeStatement(ctx, a.buildArrayTypeFuncFromTemplatedFunc(node, typ), a.catalog.SimpleCatalog(), a.opt); err == nil {
+			stmts = append(stmts, out.Statement.(*ast.CreateFunctionStmtNode))
 		}
 	}
 	if len(stmts) != 0 {
@@ -408,12 +455,15 @@ func (a *Analyzer) inferTemplatedTypeByRealType(query string, node *ast.CreateFu
 func (a *Analyzer) buildScalarTypeFuncFromTemplatedFunc(node *ast.CreateFunctionStmtNode, realType string) string {
 	signature := node.Signature()
 	var args []string
-	for _, arg := range signature.Arguments() {
+	for _, arg := range signature.GetArgument() {
 		typ := realType
-		if !arg.IsTemplated() {
-			typ = newType(arg.Type()).FormatType()
+		if arg.GetKind() == generated.SignatureArgumentKind_ARG_TYPE_FIXED {
+			argTyp, err := types.TypeFromProto(arg.GetType())
+			if err == nil && argTyp != nil {
+				typ = newType(argTyp).FormatType()
+			}
 		}
-		args = append(args, fmt.Sprintf("%s %s", arg.ArgumentName(), typ))
+		args = append(args, fmt.Sprintf("%s %s", arg.GetOptions().GetArgumentName(), typ))
 	}
 	return fmt.Sprintf(
 		"CREATE TEMP FUNCTION __zetasqlite_func__(%s) as (%s)",
@@ -425,12 +475,15 @@ func (a *Analyzer) buildScalarTypeFuncFromTemplatedFunc(node *ast.CreateFunction
 func (a *Analyzer) buildArrayTypeFuncFromTemplatedFunc(node *ast.CreateFunctionStmtNode, realType string) string {
 	signature := node.Signature()
 	var args []string
-	for _, arg := range signature.Arguments() {
+	for _, arg := range signature.GetArgument() {
 		typ := fmt.Sprintf("ARRAY<%s>", realType)
-		if !arg.IsTemplated() {
-			typ = newType(arg.Type()).FormatType()
+		if arg.GetKind() == generated.SignatureArgumentKind_ARG_TYPE_FIXED {
+			argTyp, err := types.TypeFromProto(arg.GetType())
+			if err == nil && argTyp != nil {
+				typ = newType(argTyp).FormatType()
+			}
 		}
-		args = append(args, fmt.Sprintf("%s %s", arg.ArgumentName(), typ))
+		args = append(args, fmt.Sprintf("%s %s", arg.GetOptions().GetArgumentName(), typ))
 	}
 	return fmt.Sprintf(
 		"CREATE TEMP FUNCTION __zetasqlite_func__(%s) as (%s)",
@@ -506,9 +559,13 @@ func (a *Analyzer) newDMLStmtAction(ctx context.Context, query string, args []dr
 func (a *Analyzer) newQueryStmtAction(ctx context.Context, query string, args []driver.NamedValue, node *ast.QueryStmtNode) (*QueryStmtAction, error) {
 	outputColumns := []*ColumnSpec{}
 	for _, col := range node.OutputColumnList() {
+		colType, err := types.TypeFromProto(col.Column().GetType())
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert output column type: %w", err)
+		}
 		outputColumns = append(outputColumns, &ColumnSpec{
 			Name: col.Name(),
-			Type: newType(col.Column().Type()),
+			Type: newType(colType),
 		})
 	}
 	formattedQuery, err := newNode(node).FormatSQL(ctx)
@@ -543,7 +600,7 @@ func (a *Analyzer) newCommitStmtAction(ctx context.Context, query string, args [
 
 //nolint:unparam
 func (a *Analyzer) newTruncateStmtAction(_ context.Context, _ string, _ []driver.NamedValue, node *ast.TruncateStmtNode) (*TruncateStmtAction, error) {
-	table := node.TableScan().Table().Name()
+	table := node.TableScan().Table().GetName()
 	return &TruncateStmtAction{query: fmt.Sprintf("DELETE FROM `%s`", table)}, nil
 }
 
@@ -564,7 +621,7 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 	if !ok {
 		return nil, fmt.Errorf("currently MERGE expression is supported equal expression only")
 	}
-	if fn.Function().FullName(false) != "$equal" {
+	if fn.Function().GetName() != "$equal" {
 		return nil, fmt.Errorf("currently MERGE expression is supported equal expression only")
 	}
 	argList := fn.ArgumentList()
@@ -580,10 +637,10 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 		return nil, fmt.Errorf("unexpected MERGE expression. expected column reference but got %T", argList[1])
 	}
 	var (
-		sourceColumn *ast.Column
-		targetColumn *ast.Column
+		sourceColumn *generated.ResolvedColumnProto
+		targetColumn *generated.ResolvedColumnProto
 	)
-	if strings.Contains(sourceTable, colA.Column().TableName()) {
+	if strings.Contains(sourceTable, colA.Column().GetTableName()) {
 		sourceColumn = colA.Column()
 		targetColumn = colB.Column()
 	} else {
@@ -605,7 +662,7 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 	// exists target table and source table
 	matchedFromStmt := fmt.Sprintf(
 		"FROM zetasqlite_merged_table WHERE %[2]s = %[1]s AND %[3]s = %[1]s",
-		targetColumn.Name(),
+		targetColumn.GetName(),
 		mergedTableSourceColumnName,
 		mergedTableTargetColumnName,
 	)
@@ -613,7 +670,7 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 	// exists target table but not exists source table
 	notMatchedBySourceFromStmt := fmt.Sprintf(
 		"FROM zetasqlite_merged_table WHERE %[2]s = `%[1]s` AND %[3]s IS NULL",
-		targetColumn.Name(),
+		targetColumn.GetName(),
 		mergedTableTargetColumnName,
 		mergedTableSourceColumnName,
 	)
@@ -621,7 +678,7 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 	// exists source table but not exists target table
 	notMatchedByTargetFromStmt := fmt.Sprintf(
 		"FROM zetasqlite_merged_table WHERE %[2]s = `%[1]s` AND %[3]s IS NULL",
-		sourceColumn.Name(),
+		sourceColumn.GetName(),
 		mergedTableSourceColumnName,
 		mergedTableTargetColumnName,
 	)
@@ -644,7 +701,7 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 		case ast.ActionTypeInsert:
 			var columns []string
 			for _, col := range when.InsertColumnList() {
-				columns = append(columns, fmt.Sprintf("`%s`", col.Name()))
+				columns = append(columns, fmt.Sprintf("`%s`", col.GetName()))
 			}
 			row, err := newNode(when.InsertRow()).FormatSQL(unuseColumnID(ctx))
 			if err != nil {
@@ -652,10 +709,10 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 			}
 			stmts = append(stmts, fmt.Sprintf(
 				"INSERT INTO `%[1]s`(%[2]s) SELECT %[3]s FROM (SELECT * FROM `%[4]s` %[5]s)",
-				targetColumn.TableName(),
+				targetColumn.GetTableName(),
 				strings.Join(columns, ","),
 				row,
-				sourceColumn.TableName(),
+				sourceColumn.GetTableName(),
 				whereStmt,
 			))
 		case ast.ActionTypeUpdate:
@@ -669,14 +726,14 @@ func (a *Analyzer) newMergeStmtAction(ctx context.Context, _ string, args []driv
 			}
 			stmts = append(stmts, fmt.Sprintf(
 				"UPDATE `%s` SET %s %s",
-				targetColumn.TableName(),
+				targetColumn.GetTableName(),
 				strings.Join(items, ","),
 				fromStmt,
 			))
 		case ast.ActionTypeDelete:
 			stmts = append(stmts, fmt.Sprintf(
 				"DELETE FROM `%s` %s",
-				targetColumn.TableName(),
+				targetColumn.GetTableName(),
 				whereStmt,
 			))
 		}
